@@ -65,6 +65,18 @@ async function openTsb() {
     // Delegate close button click within the overlay
     $overlay.on('click', '.tsb-close-btn', closeTsb);
 
+    // Settings toggle
+    $overlay.on('click', '.tsb-settings-toggle', function () {
+        $overlay.find('.tsb-settings-panel').slideToggle(150);
+    });
+
+    // System prompt prefix — load saved value and bind change handler
+    const savedPrefix = getSetting('systemPromptPrefix') || '';
+    $overlay.find('#tsb-system-prompt-prefix').val(savedPrefix);
+    $overlay.on('input', '#tsb-system-prompt-prefix', function () {
+        setSetting('systemPromptPrefix', $(this).val());
+    });
+
     // Set up resize handle
     $overlay.on('mousedown', '.tsb-split-handle', onResizeStart);
 

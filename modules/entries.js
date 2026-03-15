@@ -3,14 +3,24 @@
  *
  * Renders the right-side entries panel as accordions showing
  * accepted content from each completed wizard step.
- * Accordion content rendering is implemented in later tickets.
  */
 
 import { escapeHTML } from './utils.js';
+import { getStepData, isStepCompleted } from './state.js';
 
-/** @type {{ $container: jQuery|null }} */
+/** Step display labels and icons */
+const STEP_META = {
+    scenario: { label: 'Scenario', icon: 'fa-solid fa-scroll' },
+    persona: { label: 'Persona', icon: 'fa-solid fa-user' },
+    character: { label: 'Character', icon: 'fa-solid fa-id-card' },
+    location: { label: 'Location', icon: 'fa-solid fa-map-location-dot' },
+    firstMessage: { label: 'First Message', icon: 'fa-solid fa-message' },
+};
+
+/** @type {{ $container: jQuery|null, $overlayRoot: jQuery|null }} */
 const state = {
     $container: null,
+    $overlayRoot: null,
 };
 
 /**
@@ -19,6 +29,7 @@ const state = {
  * @param {jQuery} $container - The overlay root element.
  */
 export function init($container) {
+    state.$overlayRoot = $container;
     state.$container = $container.find('.tsb-entries-content');
     renderAllEntries();
 
@@ -30,34 +41,129 @@ export function init($container) {
 
 /**
  * Rebuilds the entire entries panel from current session state.
- * Currently renders the empty state; populated in later tickets.
+ * Shows entries for all completed steps, or empty state if none.
  */
 export function renderAllEntries() {
     if (!state.$container) return;
-    state.$container.html(
-        '<div class="tsb-entries-empty">' +
-        '<i class="fa-solid fa-inbox"></i>' +
-        '<span>No entries yet. Complete wizard steps to see your content here.</span>' +
-        '</div>',
-    );
+
+    const steps = ['scenario', 'persona', 'character', 'location', 'firstMessage'];
+    const completedEntries = steps.filter(s => isStepCompleted(s));
+
+    if (completedEntries.length === 0) {
+        state.$container.html(
+            '<div class="tsb-entries-empty">' +
+            '<i class="fa-solid fa-inbox"></i>' +
+            '<span>No entries yet. Complete wizard steps to see your content here.</span>' +
+            '</div>',
+        );
+        return;
+    }
+
+    const html = completedEntries.map(step => buildAccordionHtml(step)).join('');
+    state.$container.html(html);
 }
 
 /**
  * Adds or updates the accordion entry for a specific step.
- * Stub — implemented in tsb-5+.
- * @param {string} _stepName - The step to add an entry for.
+ * If the entry already exists, replaces it; otherwise appends it.
+ * @param {string} stepName - The step to add/update an entry for.
  */
-export function addEntry(_stepName) {
-    // Implemented in tsb-5
+export function addEntry(stepName) {
+    if (!state.$container) return;
+
+    // Remove empty state if present
+    state.$container.find('.tsb-entries-empty').remove();
+
+    // Remove existing accordion for this step (if re-accepting)
+    state.$container.find(`.tsb-accordion[data-step="${stepName}"]`).remove();
+
+    // Append the new accordion
+    const html = buildAccordionHtml(stepName);
+    state.$container.append(html);
 }
 
 /**
  * Updates an existing accordion entry for a specific step.
- * Stub — implemented in tsb-5+.
- * @param {string} _stepName - The step to update.
+ * @param {string} stepName - The step to update.
  */
-export function updateEntry(_stepName) {
-    // Implemented in tsb-5
+export function updateEntry(stepName) {
+    addEntry(stepName);
+}
+
+/**
+ * Builds the accordion HTML for a given step.
+ * @param {string} stepName - The step name.
+ * @returns {string} HTML string for the accordion.
+ */
+function buildAccordionHtml(stepName) {
+    const meta = STEP_META[stepName] || { label: stepName, icon: 'fa-solid fa-file' };
+    const preview = getPreviewText(stepName);
+    const fullContent = getFullContent(stepName);
+
+    return (
+        `<div class="tsb-accordion" data-step="${stepName}">` +
+            `<div class="tsb-accordion-header">` +
+                `<i class="fa-solid fa-chevron-right tsb-accordion-icon"></i>` +
+                `<i class="${escapeHTML(meta.icon)} tsb-accordion-step-icon"></i>` +
+                `<span class="tsb-accordion-title">${escapeHTML(meta.label)}</span>` +
+                `<button class="tsb-entry-edit-btn" data-step="${stepName}" title="Edit">` +
+                    `<i class="fa-solid fa-pen"></i>` +
+                `</button>` +
+            `</div>` +
+            `<div class="tsb-accordion-body" style="display:none;">` +
+                `<div class="tsb-accordion-preview">${escapeHTML(preview)}</div>` +
+                `<div class="tsb-accordion-full">${escapeHTML(fullContent)}</div>` +
+            `</div>` +
+        `</div>`
+    );
+}
+
+/**
+ * Gets a short preview (first 3 lines) for a step's accepted content.
+ * @param {string} stepName - The step name.
+ * @returns {string} Preview text.
+ */
+function getPreviewText(stepName) {
+    const data = getStepData(stepName);
+    let text = '';
+
+    switch (stepName) {
+        case 'scenario':
+            text = data?.accepted || '';
+            break;
+        case 'persona':
+            text = data?.accepted || '';
+            break;
+        case 'firstMessage':
+            text = data?.accepted || '';
+            break;
+        default:
+            text = '';
+    }
+
+    // Return first 3 lines
+    const lines = text.split('\n').filter(l => l.trim());
+    return lines.slice(0, 3).join('\n');
+}
+
+/**
+ * Gets the full content for a step's accordion body.
+ * @param {string} stepName - The step name.
+ * @returns {string} Full content text.
+ */
+function getFullContent(stepName) {
+    const data = getStepData(stepName);
+
+    switch (stepName) {
+        case 'scenario':
+            return data?.accepted || '';
+        case 'persona':
+            return data?.accepted || '';
+        case 'firstMessage':
+            return data?.accepted || '';
+        default:
+            return '';
+    }
 }
 
 /**
@@ -82,7 +188,7 @@ function handleEditClick(event) {
     event.stopPropagation(); // Don't toggle the accordion
     const step = $(event.currentTarget).data('step');
     if (step) {
-        // Dynamic import to avoid circular dependency
+        // Dynamic import to avoid circular dependency with workspace.js
         import('./workspace.js').then(ws => ws.switchTab(step));
     }
 }
@@ -91,9 +197,9 @@ function handleEditClick(event) {
  * Cleans up event handlers and nulls references.
  */
 export function destroy() {
-    if (state.$container) {
-        // Events were delegated on the overlay root ($container's parent context)
-        // They'll be cleaned up when the overlay is removed from DOM
+    if (state.$overlayRoot) {
+        state.$overlayRoot.off('.tsbEntries');
     }
     state.$container = null;
+    state.$overlayRoot = null;
 }
