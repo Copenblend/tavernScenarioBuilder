@@ -1,0 +1,46 @@
+/* ============================================================
+   Tavern Scenario Builder — Styles
+   All classes prefixed with tsb- to avoid SillyTavern collisions
+   ============================================================ */
+
+/* --- Overlay (fullscreen container) --- */
+
+.tsb-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: var(--SmartThemeBlurTintColor, #1a1a2e);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* --- Header bar --- */
+
+.tsb-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+    flex-shrink: 0;
+}
+
+.tsb-header-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.2em;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.tsb-header-title i {
+    font-size: 1.1em;
+    color: var(--SmartThemeQuoteColor, #e0a0ff);
+}
+
+/* Close button inherits SillyTavern menu_button styling */
+.tsb-close-btn {
+    font-size: 1.1em;
+}
