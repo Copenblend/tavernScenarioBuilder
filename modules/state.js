@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
     scenarioHooks: 4,
     scenarioMaxTokens: 0,
     scenarioSections: ['setting', 'timePeriod', 'premise', 'keyThemes', 'toneAtmosphere', 'storyHooks'],
+    personaMaxTokens: 0,
 };
 
 /**
