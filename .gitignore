@@ -1,3 +1,9 @@
+# Workspace files
+working/
+.github/agents
+.github/skills
+.github/hooks
+
 # Logs
 logs
 *.log
