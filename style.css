@@ -44,3 +44,103 @@
 .tsb-close-btn {
     font-size: 1.1em;
 }
+
+/* --- Split-panel body --- */
+
+.tsb-body {
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    overflow: hidden;
+}
+
+/* --- Workspace panel (left) --- */
+
+.tsb-workspace {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    flex-shrink: 0;
+    width: 75%; /* default; overridden by JS from saved setting */
+}
+
+/* During drag: suppress overflow/pointer to prevent jitter from scrollbar recalc */
+.tsb-resizing .tsb-workspace,
+.tsb-resizing .tsb-entries {
+    overflow: hidden;
+    pointer-events: none;
+    will-change: width;
+}
+
+.tsb-tab-bar {
+    display: flex;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+}
+
+.tsb-tab-content {
+    flex: 1;
+    overflow: auto;
+    padding: 16px;
+}
+
+/* --- Resize handle --- */
+
+.tsb-split-handle {
+    width: 6px;
+    cursor: col-resize;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--SmartThemeBorderColor, #444);
+    transition: background 0.15s ease;
+}
+
+.tsb-split-handle:hover {
+    background: var(--SmartThemeQuoteColor, #e0a0ff);
+}
+
+.tsb-split-handle-grip {
+    width: 2px;
+    height: 30px;
+    border-radius: 1px;
+    background: var(--SmartThemeBodyColor, #ccc);
+    opacity: 0.5;
+}
+
+.tsb-split-handle:hover .tsb-split-handle-grip {
+    opacity: 1;
+}
+
+/* --- Entries panel (right) --- */
+
+.tsb-entries {
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
+    flex: 1;
+    min-width: 0;
+}
+
+.tsb-entries-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 16px;
+    font-size: 1.05em;
+    font-weight: 600;
+    color: var(--SmartThemeBodyColor, #ccc);
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #444);
+    flex-shrink: 0;
+}
+
+.tsb-entries-header i {
+    color: var(--SmartThemeQuoteColor, #e0a0ff);
+}
+
+.tsb-entries-content {
+    flex: 1;
+    overflow: auto;
+    padding: 10px;
+}
