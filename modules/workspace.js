@@ -9,13 +9,15 @@ import { escapeHTML, debounce } from './utils.js';
 import {
     getStepData, updateStepData, acceptStep,
     getCompletedSteps, STEPS, getSetting, setSetting,
-    setCharacterField, setCharacterLorebook,
+    setCharacterField, setCharacterLorebook, setLocationEntries,
 } from './state.js';
 import {
     generateScenario, regenerateScenario,
     generatePersona, regeneratePersona,
     generateCharacter, regenerateCharacterField,
-    generateCharacterLorebook, regenerateLorebookEntry,
+    generateCharacterLorebook, generateSingleLorebookEntry, regenerateLorebookEntry,
+    generateLocation, generateSingleLocationEntry, regenerateLocationEntry,
+    generateSpeechExample,
 } from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
 import { converter } from '/script.js';
@@ -85,6 +87,20 @@ export function init($container) {
     $container.on('input.tsbWorkspace', '.tsb-lorebook-title-input', handleLorebookTitleInput);
     $container.on('input.tsbWorkspace', '.tsb-lorebook-keywords-input', handleLorebookKeywordsInput);
     $container.on('input.tsbWorkspace', '.tsb-lorebook-content', handleLorebookContentInput);
+    $container.on('input.tsbWorkspace', '.tsb-lorebook-prompt-input', handleLorebookPromptInput);
+
+    // Location handlers
+    $container.on('click.tsbWorkspace', '.tsb-btn-gen-location', handleGenLocationClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-regen-location', handleRegenLocationClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-remove-location', handleRemoveLocationClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-add-location', handleAddLocationClick);
+    $container.on('input.tsbWorkspace', '.tsb-location-title-input', handleLocationTitleInput);
+    $container.on('input.tsbWorkspace', '.tsb-location-keywords-input', handleLocationKeywordsInput);
+    $container.on('input.tsbWorkspace', '.tsb-location-content', handleLocationContentInput);
+    $container.on('input.tsbWorkspace', '.tsb-location-prompt-input', handleLocationPromptInput);
+
+    // Speech example handlers
+    $container.on('click.tsbWorkspace', '.tsb-btn-gen-example', handleGenerateExampleClick);
 
     // Constraint inputs — persist on change
     $container.on('input.tsbWorkspace', '#tsb-hooks', function () {
@@ -197,6 +213,9 @@ function renderStepContent(stepName) {
             break;
         case 'character':
             renderCharacterStep();
+            break;
+        case 'location':
+            renderLocationStep();
             break;
         default: {
             // Placeholder for unimplemented steps
@@ -596,9 +615,14 @@ function renderCharacterStep() {
     }
 
     html += '</div>' +
-        '<button class="tsb-btn tsb-btn-add-example menu_button">' +
-            '<i class="fa-solid fa-plus"></i> Add Speech Example' +
-        '</button>' +
+        '<div class="tsb-speech-example-buttons">' +
+            '<button class="tsb-btn tsb-btn-add-example menu_button">' +
+                '<i class="fa-solid fa-plus"></i> Add Speech Example' +
+            '</button>' +
+            '<button class="tsb-btn tsb-btn-gen-example menu_button">' +
+                '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Speech Example' +
+            '</button>' +
+        '</div>' +
         '</div>';
 
     // Regenerate all button
@@ -647,6 +671,106 @@ function renderCharacterStep() {
     '</div>';
 
     html += '</div>'; // close tsb-character-fields
+    html += '</div>'; // close tsb-step
+
+    state.$container.find('.tsb-tab-content').html(html);
+}
+
+/**
+ * Builds the HTML for a single location entry card.
+ * @param {object} entry - The location entry { title, keywords, content }.
+ * @param {number} index - The entry's index.
+ * @returns {string} HTML string for the card.
+ */
+function buildLocationCardHtml(entry, index) {
+    const keywordsStr = Array.isArray(entry.keywords) ? entry.keywords.join(', ') : '';
+    const isNew = !entry.content && !entry.title;
+    const btnIcon = isNew ? 'fa-wand-magic-sparkles' : 'fa-rotate';
+    const btnTitle = isNew ? 'Generate entry' : 'Regenerate entry';
+    return (
+        '<div class="tsb-lorebook-card tsb-location-card" data-index="' + index + '">' +
+            '<div class="tsb-entry-prompt-row">' +
+                '<input type="text" class="tsb-location-prompt-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="Describe what this entry should be about..." ' +
+                    'value="' + escapeHTML(entry.userPrompt || '') + '" />' +
+            '</div>' +
+            '<div class="tsb-lorebook-card-header">' +
+                '<input type="text" class="tsb-location-title-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="Entry title" value="' + escapeHTML(entry.title || '') + '" />' +
+                '<div class="tsb-lorebook-card-actions">' +
+                    '<button class="tsb-btn tsb-btn-regen-location menu_button" data-index="' + index + '" title="' + btnTitle + '">' +
+                        '<i class="fa-solid ' + btnIcon + '"></i>' +
+                    '</button>' +
+                    '<button class="tsb-btn tsb-btn-remove-location menu_button" data-index="' + index + '" title="Remove entry">' +
+                        '<i class="fa-solid fa-trash"></i>' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="tsb-lorebook-keywords-row">' +
+                '<label class="tsb-field-label">Keywords</label>' +
+                '<input type="text" class="tsb-location-keywords-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="keyword1, keyword2, ..." value="' + escapeHTML(keywordsStr) + '" />' +
+            '</div>' +
+            '<textarea class="tsb-location-content tsb-lorebook-content" data-index="' + index + '" ' +
+                'placeholder="World info entry content...">' +
+                escapeHTML(entry.content || '') +
+            '</textarea>' +
+        '</div>'
+    );
+}
+
+/**
+ * Renders the Location step content.
+ * Shows input area, generate button, location entry cards, and accept button.
+ */
+function renderLocationStep() {
+    const stepData = getStepData('location');
+    const entries = Array.isArray(stepData.entries) ? stepData.entries : [];
+    const hasEntries = entries.length > 0;
+
+    let html =
+        '<div class="tsb-step" data-step="location">' +
+            '<div class="tsb-step-input">' +
+                '<label class="tsb-input-label">Describe the location of the scenario/story' +
+                    '<span class="tsb-tooltip">' +
+                        '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                        '<span class="tsb-tooltip-text">Describe where the story takes place. This will generate world info lorebook entries that activate when matching keywords appear in conversation.</span>' +
+                    '</span>' +
+                '</label>' +
+                '<span class="tsb-input-helper">(e.g., "Earth 2047, Brighton Michigan, My House" or just "My house")</span>' +
+                '<textarea class="tsb-input-area text_pole" placeholder="Describe the location...">' +
+                    escapeHTML(stepData.userInput || '') +
+                '</textarea>' +
+            '</div>' +
+            '<div class="tsb-step-actions">' +
+                '<button class="tsb-btn tsb-btn-gen-location menu_button">' +
+                    '<i class="fa-solid fa-wand-magic-sparkles"></i> ' +
+                    (hasEntries ? 'Regenerate Location' : 'Generate Location') +
+                '</button>' +
+            '</div>';
+
+    // Location entries section
+    html += '<div class="tsb-location-list">';
+    if (hasEntries) {
+        for (let i = 0; i < entries.length; i++) {
+            html += buildLocationCardHtml(entries[i], i);
+        }
+    }
+    html += '</div>';
+
+    // Add Entry + Accept buttons
+    html += '<div class="tsb-step-actions tsb-location-actions-row">' +
+        '<button class="tsb-btn tsb-btn-add-location menu_button">' +
+            '<i class="fa-solid fa-plus"></i> Add Entry' +
+        '</button>' +
+    '</div>';
+
+    html += '<div class="tsb-step-actions">' +
+        '<button class="tsb-btn tsb-btn-accept menu_button" data-step="location">' +
+            '<i class="fa-solid fa-check"></i> Accept Location' +
+        '</button>' +
+    '</div>';
+
     html += '</div>'; // close tsb-step
 
     state.$container.find('.tsb-tab-content').html(html);
@@ -782,6 +906,36 @@ function handleAcceptClick(event) {
         }
 
         toastr.success('Character accepted!');
+        return;
+    }
+
+    // Location step has special accept logic (entries array, no textarea)
+    if (stepName === 'location') {
+        const stepData = getStepData('location');
+        if (!Array.isArray(stepData.entries) || stepData.entries.length === 0) {
+            toastr.warning('Nothing to accept. Generate location entries first.');
+            return;
+        }
+
+        // Store user input as accepted summary for entries display
+        updateStepData('location', { accepted: stepData.userInput || 'Location' });
+        setLocationEntries(stepData.entries);
+        acceptStep('location');
+        addEntry('location');
+
+        const currentIndex = STEPS.indexOf('location');
+        if (currentIndex >= 0 && currentIndex < STEPS.length - 1) {
+            const nextStep = STEPS[currentIndex + 1];
+            unlockTab(nextStep);
+            const $tab = state.$container.find('.tsb-tab[data-step="location"]');
+            if (!$tab.hasClass('tsb-tab-completed')) {
+                $tab.addClass('tsb-tab-completed')
+                    .append(' <i class="fa-solid fa-check"></i>');
+            }
+            switchTab(nextStep);
+        }
+
+        toastr.success('Location accepted!');
         return;
     }
 
@@ -1106,6 +1260,54 @@ function handleRemoveExampleClick(event) {
     renderCharacterStep();
 }
 
+/**
+ * Handles clicking the "Generate Speech Example" button.
+ * Uses AI to generate a new speech example for the character.
+ */
+async function handleGenerateExampleClick() {
+    if (state.generating) return;
+
+    const stepData = getStepData('character');
+    if (!stepData.fields?.name) {
+        toastr.warning('Generate character fields first before generating speech examples.');
+        return;
+    }
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    const $btn = state.$container.find('.tsb-btn-gen-example');
+    $btn.prop('disabled', true);
+    const originalHtml = $btn.html();
+    $btn.html('<i class="fa-solid fa-spinner fa-spin"></i> Generating...');
+
+    try {
+        const result = await generateSpeechExample();
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result) {
+            toastr.warning('AI returned an empty speech example. Try again.');
+            return;
+        }
+
+        if (!Array.isArray(stepData.fields.speech_examples)) {
+            stepData.fields.speech_examples = [];
+        }
+        stepData.fields.speech_examples.push(result);
+        renderCharacterStep();
+        toastr.success('Speech example generated!');
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Speech example generation failed:', err);
+        toastr.error('Speech example generation failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            $btn.prop('disabled', false).html(originalHtml);
+        }
+    }
+}
+
 // === Lorebook handlers ===
 
 /**
@@ -1116,14 +1318,22 @@ function handleRemoveExampleClick(event) {
  */
 function buildLorebookCardHtml(entry, index) {
     const keywordsStr = Array.isArray(entry.keywords) ? entry.keywords.join(', ') : '';
+    const isNew = !entry.content && !entry.title;
+    const btnIcon = isNew ? 'fa-wand-magic-sparkles' : 'fa-rotate';
+    const btnTitle = isNew ? 'Generate entry' : 'Regenerate entry';
     return (
         '<div class="tsb-lorebook-card" data-index="' + index + '">' +
+            '<div class="tsb-entry-prompt-row">' +
+                '<input type="text" class="tsb-lorebook-prompt-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="Describe what this entry should be about..." ' +
+                    'value="' + escapeHTML(entry.userPrompt || '') + '" />' +
+            '</div>' +
             '<div class="tsb-lorebook-card-header">' +
                 '<input type="text" class="tsb-lorebook-title-input text_pole" data-index="' + index + '" ' +
                     'placeholder="Entry title" value="' + escapeHTML(entry.title || '') + '" />' +
                 '<div class="tsb-lorebook-card-actions">' +
-                    '<button class="tsb-btn tsb-btn-regen-lorebook menu_button" data-index="' + index + '" title="Regenerate entry">' +
-                        '<i class="fa-solid fa-rotate"></i>' +
+                    '<button class="tsb-btn tsb-btn-regen-lorebook menu_button" data-index="' + index + '" title="' + btnTitle + '">' +
+                        '<i class="fa-solid ' + btnIcon + '"></i>' +
                     '</button>' +
                     '<button class="tsb-btn tsb-btn-remove-lorebook menu_button" data-index="' + index + '" title="Remove entry">' +
                         '<i class="fa-solid fa-trash"></i>' +
@@ -1206,6 +1416,16 @@ async function handleRegenLorebookClick(event) {
     const lorebook = stepData.lorebook || [];
     if (index >= lorebook.length) return;
 
+    const entry = lorebook[index];
+    const isNew = !entry.content && !entry.title;
+    const userPrompt = entry.userPrompt || '';
+
+    // For new entries, require a user prompt
+    if (isNew && !userPrompt) {
+        toastr.warning('Please describe what this entry should be about first.');
+        return;
+    }
+
     const currentGenId = ++state.generationId;
     state.generating = true;
     $btn.prop('disabled', true);
@@ -1214,7 +1434,12 @@ async function handleRegenLorebookClick(event) {
     $btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
 
     try {
-        const result = await regenerateLorebookEntry(lorebook[index], index);
+        let result;
+        if (isNew) {
+            result = await generateSingleLorebookEntry(userPrompt);
+        } else {
+            result = await regenerateLorebookEntry(entry, index, userPrompt || undefined);
+        }
 
         if (currentGenId !== state.generationId) return;
 
@@ -1223,23 +1448,21 @@ async function handleRegenLorebookClick(event) {
             return;
         }
 
+        // Preserve userPrompt in the result
+        result.userPrompt = userPrompt;
+
         // Update state
         lorebook[index] = result;
         setCharacterLorebook(lorebook);
 
-        // Update the card DOM in-place
-        const $card = state.$container.find(`.tsb-lorebook-card[data-index="${index}"]`);
-        $card.find('.tsb-lorebook-title-input').val(result.title || '');
-        $card.find('.tsb-lorebook-keywords-input').val(
-            Array.isArray(result.keywords) ? result.keywords.join(', ') : '',
-        );
-        $card.find('.tsb-lorebook-content').val(result.content || '');
+        // Re-render to update button state (Generate → Regenerate)
+        renderCharacterStep();
 
-        toastr.success('Lorebook entry regenerated!');
+        toastr.success(isNew ? 'Lorebook entry generated!' : 'Lorebook entry regenerated!');
     } catch (err) {
         if (currentGenId !== state.generationId) return;
-        console.error('[TavernScenarioBuilder] Lorebook entry regeneration failed:', err);
-        toastr.error('Entry regeneration failed. Please try again.');
+        console.error('[TavernScenarioBuilder] Lorebook entry generation failed:', err);
+        toastr.error('Entry generation failed. Please try again.');
     } finally {
         if (currentGenId === state.generationId) {
             state.generating = false;
@@ -1274,7 +1497,7 @@ function handleAddLorebookClick() {
     if (!Array.isArray(stepData.lorebook)) {
         stepData.lorebook = [];
     }
-    stepData.lorebook.push({ title: '', keywords: [], content: '' });
+    stepData.lorebook.push({ title: '', keywords: [], content: '', userPrompt: '' });
     setCharacterLorebook(stepData.lorebook);
     renderCharacterStep();
 }
@@ -1310,6 +1533,214 @@ const handleLorebookContentInput = debounce(function (event) {
     const stepData = getStepData('character');
     if (Array.isArray(stepData.lorebook) && stepData.lorebook[index]) {
         stepData.lorebook[index].content = $(event.target).val() || '';
+    }
+}, 300);
+
+/** Debounced handler for lorebook prompt input */
+const handleLorebookPromptInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.lorebook) && stepData.lorebook[index]) {
+        stepData.lorebook[index].userPrompt = $(event.target).val() || '';
+    }
+}, 300);
+
+// === Location handlers ===
+
+/**
+ * Handles clicking the "Generate Location" button.
+ * Generates world info entries for the described location.
+ */
+async function handleGenLocationClick() {
+    if (state.generating) return;
+
+    const $step = state.$container.find('.tsb-step[data-step="location"]');
+    const userInput = $step.find('.tsb-input-area').val()?.trim();
+
+    if (!userInput) {
+        toastr.warning('Please enter a location description first.');
+        return;
+    }
+
+    updateStepData('location', { userInput });
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    setButtonsDisabled(true);
+    showLoading();
+
+    try {
+        const result = await generateLocation(userInput);
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result || !Array.isArray(result) || result.length === 0) {
+            toastr.error('Could not parse location data from AI response. Try generating again.');
+            return;
+        }
+
+        setLocationEntries(result);
+        renderLocationStep();
+        toastr.success(`${result.length} location entries generated!`);
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Location generation failed:', err);
+        toastr.error('Location generation failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            setButtonsDisabled(false);
+            hideLoading();
+        }
+    }
+}
+
+/**
+ * Handles clicking the Regenerate button on a location entry.
+ * Regenerates only the targeted entry.
+ * @param {Event} event - The delegated click event.
+ */
+async function handleRegenLocationClick(event) {
+    if (state.generating) return;
+
+    const $btn = $(event.currentTarget);
+    const index = parseInt($btn.data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    const entries = stepData.entries || [];
+    if (index >= entries.length) return;
+
+    const entry = entries[index];
+    const isNew = !entry.content && !entry.title;
+    const userPrompt = entry.userPrompt || '';
+    const userInput = stepData.userInput || '';
+
+    // For new entries, require a user prompt
+    if (isNew && !userPrompt) {
+        toastr.warning('Please describe what this entry should be about first.');
+        return;
+    }
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    $btn.prop('disabled', true);
+
+    const originalHtml = $btn.html();
+    $btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
+
+    try {
+        let result;
+        if (isNew) {
+            result = await generateSingleLocationEntry(userPrompt, userInput);
+        } else {
+            result = await regenerateLocationEntry(entry, index, userInput, userPrompt || undefined);
+        }
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result) {
+            toastr.warning('AI returned an empty response for this entry.');
+            return;
+        }
+
+        // Preserve userPrompt in the result
+        result.userPrompt = userPrompt;
+
+        entries[index] = result;
+        setLocationEntries(entries);
+
+        // Re-render to update button state (Generate → Regenerate)
+        renderLocationStep();
+
+        toastr.success(isNew ? 'Location entry generated!' : 'Location entry regenerated!');
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Location entry generation failed:', err);
+        toastr.error('Entry generation failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            $btn.prop('disabled', false).html(originalHtml);
+        }
+    }
+}
+
+/**
+ * Handles clicking the Remove button on a location entry.
+ * Removes the entry and re-renders.
+ * @param {Event} event - The delegated click event.
+ */
+function handleRemoveLocationClick(event) {
+    const index = parseInt($(event.currentTarget).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    if (Array.isArray(stepData.entries)) {
+        stepData.entries.splice(index, 1);
+        setLocationEntries(stepData.entries);
+    }
+    renderLocationStep();
+}
+
+/**
+ * Handles clicking the "Add Entry" button for location entries.
+ * Appends a blank entry and re-renders.
+ */
+function handleAddLocationClick() {
+    const stepData = getStepData('location');
+    if (!Array.isArray(stepData.entries)) {
+        stepData.entries = [];
+    }
+    stepData.entries.push({ title: '', keywords: [], content: '', userPrompt: '' });
+    setLocationEntries(stepData.entries);
+    renderLocationStep();
+}
+
+/** Debounced handler for location entry title input */
+const handleLocationTitleInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    if (Array.isArray(stepData.entries) && stepData.entries[index]) {
+        stepData.entries[index].title = $(event.target).val() || '';
+    }
+}, 300);
+
+/** Debounced handler for location entry keywords input — splits on comma */
+const handleLocationKeywordsInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    if (Array.isArray(stepData.entries) && stepData.entries[index]) {
+        const raw = $(event.target).val() || '';
+        stepData.entries[index].keywords = raw.split(',').map(k => k.trim()).filter(Boolean);
+    }
+}, 300);
+
+/** Debounced handler for location entry content textarea */
+const handleLocationContentInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    if (Array.isArray(stepData.entries) && stepData.entries[index]) {
+        stepData.entries[index].content = $(event.target).val() || '';
+    }
+}, 300);
+
+/** Debounced handler for location prompt input */
+const handleLocationPromptInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('location');
+    if (Array.isArray(stepData.entries) && stepData.entries[index]) {
+        stepData.entries[index].userPrompt = $(event.target).val() || '';
     }
 }, 300);
 
