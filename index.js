@@ -7,6 +7,8 @@
 
 import { renderExtensionTemplateAsync } from '/scripts/extensions.js';
 import { loadSettings, getSetting, setSetting } from './modules/state.js';
+import { init as initWorkspace, destroy as destroyWorkspace } from './modules/workspace.js';
+import { init as initEntries, destroy as destroyEntries } from './modules/entries.js';
 
 const extensionFolderPath = 'third-party/SillyTavern-TavernScenarioBuilder';
 
@@ -68,6 +70,10 @@ async function openTsb() {
 
     $(document.body).append($overlay);
 
+    // Initialize workspace tabs and entries panel
+    initWorkspace($overlay);
+    initEntries($overlay);
+
     console.log('[TavernScenarioBuilder] Overlay opened');
 }
 
@@ -75,6 +81,8 @@ async function openTsb() {
  * Closes the overlay, cleans up event listeners, and removes it from DOM.
  */
 function closeTsb() {
+    destroyWorkspace();
+    destroyEntries();
     cleanupResize();
     $('#tsb-overlay').remove();
     console.log('[TavernScenarioBuilder] Overlay closed');
