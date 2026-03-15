@@ -160,6 +160,14 @@ export function setCharacterLorebook(entries) {
 }
 
 /**
+ * Replaces the location world info entries array.
+ * @param {Array} entries - The new location entries array.
+ */
+export function setLocationEntries(entries) {
+    session.location.entries = entries;
+}
+
+/**
  * Marks a step as completed, advances currentStep, and persists session.
  * @param {string} stepName - The step that was accepted.
  */

@@ -143,6 +143,14 @@ function getPreviewText(stepName) {
         case 'firstMessage':
             text = data?.accepted || '';
             break;
+        case 'location': {
+            const entries = Array.isArray(data?.entries) ? data.entries : [];
+            text = entries.length + ' world info ' + (entries.length === 1 ? 'entry' : 'entries');
+            if (entries.length > 0) {
+                text += '\n' + entries.map(e => e.title || 'Untitled').join(', ');
+            }
+            break;
+        }
         default:
             text = '';
     }
@@ -167,6 +175,8 @@ function getFullContent(stepName) {
             return data?.accepted || '';
         case 'character':
             return buildCharacterContent(data);
+        case 'location':
+            return buildLocationContent(data);
         case 'firstMessage':
             return data?.accepted || '';
         default:
@@ -207,6 +217,23 @@ function buildCharacterContent(data) {
     lines.push('\n— Lorebook —\n' + lorebook.length + ' ' + (lorebook.length === 1 ? 'entry' : 'entries'));
 
     return lines.join('\n');
+}
+
+/**
+ * Builds a full text summary of location data for the entries accordion.
+ * @param {object} data - The location step data.
+ * @returns {string} Formatted text listing all entries.
+ */
+function buildLocationContent(data) {
+    const entries = Array.isArray(data?.entries) ? data.entries : [];
+    if (entries.length === 0) return 'No location entries.';
+
+    return entries.map(e => {
+        const title = e.title || 'Untitled';
+        const keywords = Array.isArray(e.keywords) ? e.keywords.join(', ') : '';
+        const content = e.content || '';
+        return '— ' + title + ' —\nKeywords: ' + keywords + '\n' + content;
+    }).join('\n\n');
 }
 
 /**

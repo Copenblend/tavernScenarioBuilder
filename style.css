@@ -904,6 +904,61 @@ select.tsb-constraint-input {
     color: var(--SmartThemeQuoteColor, #b380d0) !important;
 }
 
+/* --- Location entries --- */
+
+.tsb-location-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tsb-btn-add-location {
+    width: 100%;
+    border: 2px dashed var(--SmartThemeBorderColor, #555) !important;
+    background: transparent !important;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.tsb-btn-add-location:hover {
+    border-color: var(--SmartThemeQuoteColor, #b380d0) !important;
+    color: var(--SmartThemeQuoteColor, #b380d0) !important;
+}
+
+/* --- Entry prompt row (lorebook + location cards) --- */
+
+.tsb-entry-prompt-row {
+    margin-bottom: 6px;
+}
+
+.tsb-entry-prompt-row input {
+    width: 100%;
+    font-size: 0.85em;
+    font-style: italic;
+    opacity: 0.85;
+}
+
+/* --- Speech example buttons row --- */
+
+.tsb-speech-example-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.tsb-speech-example-buttons .tsb-btn {
+    flex: 1;
+    min-width: 180px;
+}
+
+.tsb-input-helper {
+    font-size: 0.85em;
+    color: var(--SmartThemeQuoteColor, #999);
+    margin-bottom: 6px;
+    display: block;
+}
+
 /* --- Loading overlay --- */
 
 .tsb-loading {
