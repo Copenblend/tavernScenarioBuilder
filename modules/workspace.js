@@ -5,12 +5,17 @@
  * step content rendering, and user interactions (Generate, Accept, Regenerate).
  */
 
-import { escapeHTML } from './utils.js';
+import { escapeHTML, debounce } from './utils.js';
 import {
     getStepData, updateStepData, acceptStep,
     getCompletedSteps, STEPS, getSetting, setSetting,
+    setCharacterField,
 } from './state.js';
-import { generateScenario, regenerateScenario, generatePersona, regeneratePersona } from './generation.js';
+import {
+    generateScenario, regenerateScenario,
+    generatePersona, regeneratePersona,
+    generateCharacter, regenerateCharacterField,
+} from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
 import { converter } from '/script.js';
 
@@ -64,6 +69,13 @@ export function init($container) {
     $container.on('click.tsbWorkspace', '.tsb-btn-edit', handleEditClick);
     $container.on('click.tsbWorkspace', '.tsb-btn-save', handleSaveClick);
 
+    // Character field handlers
+    $container.on('click.tsbWorkspace', '.tsb-btn-regen-field', handleFieldRegenerateClick);
+    $container.on('input.tsbWorkspace', '.tsb-field-input[data-field]', handleFieldInput);
+    $container.on('input.tsbWorkspace', '.tsb-speech-example-input', handleSpeechExampleInput);
+    $container.on('click.tsbWorkspace', '.tsb-btn-add-example', handleAddExampleClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-remove-example', handleRemoveExampleClick);
+
     // Constraint inputs — persist on change
     $container.on('input.tsbWorkspace', '#tsb-hooks', function () {
         setSetting('scenarioHooks', parseInt($(this).val()) || 0);
@@ -73,6 +85,17 @@ export function init($container) {
     });
     $container.on('input.tsbWorkspace', '#tsb-persona-max-tokens', function () {
         setSetting('personaMaxTokens', parseInt($(this).val()) || 0);
+    });
+
+    // Persona name input
+    $container.on('input.tsbWorkspace', '.tsb-persona-name-input', function () {
+        const stepData = getStepData('persona');
+        stepData.personaName = $(this).val() || '';
+    });
+
+    // Character detail level
+    $container.on('change.tsbWorkspace', '#tsb-character-detail-level', function () {
+        setSetting('characterDetailLevel', $(this).val());
     });
 
     // Section toggles — rebuild enabled list on change
@@ -162,6 +185,9 @@ function renderStepContent(stepName) {
         case 'persona':
             renderPersonaStep();
             break;
+        case 'character':
+            renderCharacterStep();
+            break;
         default: {
             // Placeholder for unimplemented steps
             const label = TABS.find(t => t.step === stepName)?.label ?? stepName;
@@ -201,6 +227,16 @@ function getScenarioConstraints() {
 function getPersonaConstraints() {
     return {
         maxTokens: getSetting('personaMaxTokens'),
+    };
+}
+
+/**
+ * Reads current character constraint settings.
+ * @returns {{ detailLevel: string }}
+ */
+function getCharacterConstraints() {
+    return {
+        detailLevel: getSetting('characterDetailLevel') || 'balanced',
     };
 }
 
@@ -319,9 +355,20 @@ function renderPersonaStep() {
     const hasOutput = !!outputContent;
     const maxTokens = getSetting('personaMaxTokens');
 
+    const personaName = stepData.personaName || '';
+
     const html =
         '<div class="tsb-step" data-step="persona">' +
             '<div class="tsb-step-input">' +
+                '<div class="tsb-field-group tsb-persona-name-group">' +
+                    '<label class="tsb-field-label">Name' +
+                        '<span class="tsb-tooltip">' +
+                            '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                            '<span class="tsb-tooltip-text">Enter your persona\'s name. This will become {{user}} in the final SillyTavern persona and will be included in generation prompts for consistency.</span>' +
+                        '</span>' +
+                    '</label>' +
+                    '<input type="text" class="tsb-persona-name-input text_pole" placeholder="e.g. Aelric, Mira, etc." value="' + escapeHTML(personaName) + '" />' +
+                '</div>' +
                 '<label class="tsb-step-label">Describe your player persona for this scenario' +
                     '<span class="tsb-tooltip">' +
                         '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
@@ -373,6 +420,190 @@ function renderPersonaStep() {
     state.$container.find('.tsb-tab-content').html(html);
 }
 
+/** Character field definitions organized into display sections */
+const CHARACTER_SECTIONS = [
+    {
+        title: 'Basic',
+        fields: [
+            { key: 'name', label: 'Name', tooltip: 'The character\'s name. This will become {{char}} in the final SillyTavern character card — all references to the character name will be replaced with the {{char}} macro.' },
+            { key: 'age', label: 'Age' },
+        ],
+    },
+    {
+        title: 'Physical Description',
+        fields: [
+            { key: 'hair', label: 'Hair' },
+            { key: 'eyes', label: 'Eyes' },
+            { key: 'height', label: 'Height' },
+            { key: 'body', label: 'Body', tall: true },
+            { key: 'face', label: 'Face' },
+            { key: 'features', label: 'Features' },
+        ],
+    },
+    {
+        title: 'Personality',
+        fields: [
+            { key: 'traits', label: 'Traits' },
+            { key: 'habits', label: 'Habits' },
+            { key: 'behavior', label: 'Behavior' },
+        ],
+    },
+    {
+        title: 'Preferences',
+        fields: [
+            { key: 'likes', label: 'Likes' },
+            { key: 'dislikes', label: 'Dislikes' },
+        ],
+    },
+    {
+        title: 'Sexuality',
+        fields: [
+            { key: 'sexuality_orientation', label: 'Orientation' },
+            { key: 'sexuality_kinks', label: 'Kinks', tall: true },
+            { key: 'sexuality_likes', label: 'Likes', tall: true },
+            { key: 'sexuality_dislikes', label: 'Dislikes', tall: true },
+        ],
+    },
+    {
+        title: 'Speaking',
+        fields: [
+            { key: 'speaking_style', label: 'Style' },
+            { key: 'speaking_quirks', label: 'Quirks' },
+        ],
+    },
+    {
+        title: 'Advanced Definitions',
+        fields: [
+            { key: 'personality_summary', label: 'Personality Summary', tall: true },
+            { key: 'scenario', label: 'Scenario', tall: true },
+            { key: 'character_note', label: 'Character Note', tall: true },
+        ],
+    },
+];
+
+/**
+ * Renders the Character step UI: prompt textarea, Generate button, and
+ * a field grid (hidden until generation) with per-field regeneration.
+ * Speech examples are handled as a separate sub-section with add/remove.
+ * No Accept button — that comes in tsb-8 with lorebook generation.
+ */
+function renderCharacterStep() {
+    const stepData = getStepData('character');
+    const fields = stepData.fields || {};
+    const hasFields = !!fields.name;
+    const detailLevel = getSetting('characterDetailLevel') || 'balanced';
+
+    // Build input section
+    let html =
+        '<div class="tsb-step" data-step="character">' +
+            '<div class="tsb-step-input">' +
+                '<label class="tsb-step-label">Describe the chat character' +
+                    '<span class="tsb-tooltip">' +
+                        '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                        '<span class="tsb-tooltip-text">Describe the character you want to create. Generate will produce a complete character card with all fields populated from your description, using the scenario and persona as context.</span>' +
+                    '</span>' +
+                '</label>' +
+                '<textarea class="tsb-input-area" placeholder="e.g. A mysterious elven sorceress with a dark past...">' +
+                    escapeHTML(stepData.userInput) +
+                '</textarea>' +
+                '<div class="tsb-constraints">' +
+                    '<div class="tsb-constraint">' +
+                        '<label>Detail Level' +
+                            '<span class="tsb-tooltip">' +
+                                '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                                '<span class="tsb-tooltip-text">Controls how detailed each character field will be. Minimal (~1000 tokens) for concise cards, Balanced (~2000 tokens) for moderate detail, Verbose (~5000 tokens) for maximum detail, or use your Connection Profile token limit.</span>' +
+                            '</span>' +
+                        '</label>' +
+                        '<select id="tsb-character-detail-level" class="tsb-constraint-input text_pole">' +
+                            '<option value="minimal"' + (detailLevel === 'minimal' ? ' selected' : '') + '>Minimal (~1000 tokens)</option>' +
+                            '<option value="balanced"' + (detailLevel === 'balanced' ? ' selected' : '') + '>Balanced (~2000 tokens)</option>' +
+                            '<option value="verbose"' + (detailLevel === 'verbose' ? ' selected' : '') + '>Verbose (~5000 tokens)</option>' +
+                            '<option value="connection"' + (detailLevel === 'connection' ? ' selected' : '') + '>Connection Profile Limit</option>' +
+                        '</select>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="tsb-step-actions">' +
+                    '<button class="tsb-btn tsb-btn-generate menu_button" ' +
+                        (hasFields ? 'style="display:none"' : '') + '>' +
+                        '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate Character' +
+                    '</button>' +
+                '</div>' +
+            '</div>';
+
+    // Build fields section (hidden if no fields yet)
+    html += '<div class="tsb-character-fields" ' + (hasFields ? '' : 'style="display:none"') + '>';
+
+    // Render each section with its fields
+    for (const section of CHARACTER_SECTIONS) {
+        html += '<div class="tsb-fields-section">' +
+            '<div class="tsb-fields-section-title">' + escapeHTML(section.title) + '</div>';
+
+        for (const field of section.fields) {
+            const value = fields[field.key] || '';
+            const tallClass = field.tall ? ' tsb-field-input-tall' : '';
+            const tooltipHtml = field.tooltip
+                ? '<span class="tsb-tooltip">' +
+                      '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                      '<span class="tsb-tooltip-text">' + field.tooltip + '</span>' +
+                  '</span>'
+                : '';
+            html +=
+                '<div class="tsb-field-group">' +
+                    '<label class="tsb-field-label">' + escapeHTML(field.label) + tooltipHtml + '</label>' +
+                    '<textarea class="tsb-field-input' + tallClass + '" data-field="' + field.key + '">' +
+                        escapeHTML(value) +
+                    '</textarea>' +
+                    '<button class="tsb-btn tsb-btn-regen-field menu_button" data-field="' + field.key + '" title="Regenerate ' + escapeHTML(field.label) + '">' +
+                        '<i class="fa-solid fa-rotate"></i>' +
+                    '</button>' +
+                '</div>';
+        }
+
+        html += '</div>';
+    }
+
+    // Speech examples sub-section
+    const examples = Array.isArray(fields.speech_examples) ? fields.speech_examples : [];
+    html += '<div class="tsb-fields-section">' +
+        '<div class="tsb-fields-section-title">Speech Examples' +
+            '<span class="tsb-tooltip">' +
+                '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                '<span class="tsb-tooltip-text">Example messages showing the character\'s speaking style. Each example will be wrapped in &lt;START&gt;&lt;/START&gt; tags automatically when building the final character card.</span>' +
+            '</span>' +
+        '</div>' +
+        '<div class="tsb-speech-examples">';
+
+    for (let i = 0; i < examples.length; i++) {
+        html +=
+            '<div class="tsb-speech-example" data-index="' + i + '">' +
+                '<textarea class="tsb-field-input tsb-field-input-tall tsb-speech-example-input" data-index="' + i + '">' +
+                    escapeHTML(examples[i]) +
+                '</textarea>' +
+                '<button class="tsb-btn tsb-btn-remove-example menu_button" data-index="' + i + '" title="Remove example">' +
+                    '<i class="fa-solid fa-trash"></i>' +
+                '</button>' +
+            '</div>';
+    }
+
+    html += '</div>' +
+        '<button class="tsb-btn tsb-btn-add-example menu_button">' +
+            '<i class="fa-solid fa-plus"></i> Add Speech Example' +
+        '</button>' +
+        '</div>';
+
+    // Regenerate all button
+    html += '<div class="tsb-step-actions">' +
+        '<button class="tsb-btn tsb-btn-regenerate menu_button">' +
+            '<i class="fa-solid fa-rotate"></i> Regenerate All' +
+        '</button>' +
+    '</div>';
+
+    html += '</div>'; // close tsb-character-fields
+    html += '</div>'; // close tsb-step
+
+    state.$container.find('.tsb-tab-content').html(html);
+}
+
 /**
  * Handles click on a tab element.
  * @param {Event} event - The delegated click event.
@@ -409,31 +640,51 @@ async function handleGenerateClick(event) {
     showLoading();
 
     try {
-        let result = '';
-        if (stepName === 'scenario') {
-            result = await generateScenario(userInput, getScenarioConstraints());
-        } else if (stepName === 'persona') {
-            result = await generatePersona(userInput, getPersonaConstraints());
+        if (stepName === 'character') {
+            // Character step: generate all fields as JSON
+            const result = await generateCharacter(userInput, getCharacterConstraints());
+
+            if (currentGenId !== state.generationId) return;
+
+            if (!result) {
+                toastr.error('Could not parse character data from AI response. Try generating again.');
+                return;
+            }
+
+            // Store fields in session state
+            const stepData = getStepData('character');
+            Object.assign(stepData.fields, result);
+
+            // Re-render the character step to show populated fields
+            renderCharacterStep();
+            toastr.success('Character fields generated!');
+        } else {
+            // Scenario / Persona: generate text output
+            let result = '';
+            if (stepName === 'scenario') {
+                result = await generateScenario(userInput, getScenarioConstraints());
+            } else if (stepName === 'persona') {
+                const personaName = getStepData('persona').personaName || '';
+                result = await generatePersona(userInput, getPersonaConstraints(), personaName);
+            }
+
+            if (currentGenId !== state.generationId) return;
+
+            if (!result) {
+                toastr.warning('AI returned an empty response. Try generating again.');
+                return;
+            }
+
+            updateStepData(stepName, { generated: result });
+
+            const $output = $step.find('.tsb-step-output');
+            $output.find('.tsb-output-area').val(result);
+            $output.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
+            $output.find('.tsb-output-area').hide();
+            $output.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
+            $output.show();
+            $step.find('.tsb-btn-generate').hide();
         }
-
-        // Guard against stale result
-        if (currentGenId !== state.generationId) return;
-
-        if (!result) {
-            toastr.warning('AI returned an empty response. Try generating again.');
-            return;
-        }
-
-        // Store generated output and show it
-        updateStepData(stepName, { generated: result });
-
-        const $output = $step.find('.tsb-step-output');
-        $output.find('.tsb-output-area').val(result);
-        $output.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
-        $output.find('.tsb-output-area').hide();
-        $output.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
-        $output.show();
-        $step.find('.tsb-btn-generate').hide();
     } catch (err) {
         if (currentGenId !== state.generationId) return;
         console.error('[TavernScenarioBuilder] Generation failed:', err);
@@ -495,10 +746,12 @@ function handleAcceptClick(event) {
     if (currentIndex >= 0 && currentIndex < STEPS.length - 1) {
         const nextStep = STEPS[currentIndex + 1];
         unlockTab(nextStep);
-        // Mark current tab as completed in the tab bar
-        state.$container.find(`.tsb-tab[data-step="${stepName}"]`)
-            .addClass('tsb-tab-completed')
-            .append(' <i class="fa-solid fa-check"></i>');
+        // Mark current tab as completed in the tab bar (only add checkmark once)
+        const $tab = state.$container.find(`.tsb-tab[data-step="${stepName}"]`);
+        if (!$tab.hasClass('tsb-tab-completed')) {
+            $tab.addClass('tsb-tab-completed')
+                .append(' <i class="fa-solid fa-check"></i>');
+        }
         switchTab(nextStep);
     }
 
@@ -538,25 +791,43 @@ async function handleRegenerateClick(event) {
     showLoading();
 
     try {
-        let result = '';
-        if (stepName === 'scenario') {
-            result = await regenerateScenario(userInput, previousOutput, getScenarioConstraints());
-        } else if (stepName === 'persona') {
-            result = await regeneratePersona(userInput, previousOutput, getPersonaConstraints());
+        if (stepName === 'character') {
+            // Regenerate all character fields
+            const result = await generateCharacter(userInput, getCharacterConstraints());
+
+            if (currentGenId !== state.generationId) return;
+
+            if (!result) {
+                toastr.error('Could not parse character data from AI response. Try again.');
+                return;
+            }
+
+            const stepData = getStepData('character');
+            Object.assign(stepData.fields, result);
+            renderCharacterStep();
+            toastr.success('Character fields regenerated!');
+        } else {
+            let result = '';
+            if (stepName === 'scenario') {
+                result = await regenerateScenario(userInput, previousOutput, getScenarioConstraints());
+            } else if (stepName === 'persona') {
+                const personaName = getStepData('persona').personaName || '';
+                result = await regeneratePersona(userInput, previousOutput, getPersonaConstraints(), personaName);
+            }
+
+            if (currentGenId !== state.generationId) return;
+
+            if (!result) {
+                toastr.warning('AI returned an empty response. Try regenerating again.');
+                return;
+            }
+
+            updateStepData(stepName, { generated: result });
+            $step.find('.tsb-output-area').val(result);
+            $step.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
+            $step.find('.tsb-output-area').hide();
+            $step.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
         }
-
-        if (currentGenId !== state.generationId) return;
-
-        if (!result) {
-            toastr.warning('AI returned an empty response. Try regenerating again.');
-            return;
-        }
-
-        updateStepData(stepName, { generated: result });
-        $step.find('.tsb-output-area').val(result);
-        $step.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
-        $step.find('.tsb-output-area').hide();
-        $step.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
     } catch (err) {
         if (currentGenId !== state.generationId) return;
         console.error('[TavernScenarioBuilder] Regeneration failed:', err);
@@ -623,8 +894,10 @@ function handleSaveClick(event) {
 function showLoading() {
     const $content = state.$container?.find('.tsb-tab-content');
     if (!$content || $content.find('.tsb-loading').length > 0) return;
+    $content.addClass('tsb-loading-active');
+    const overlayHeight = Math.max($content[0].scrollHeight, $content[0].clientHeight);
     $content.append(
-        '<div class="tsb-loading">' +
+        '<div class="tsb-loading" style="height:' + overlayHeight + 'px">' +
             '<div class="tsb-loading-spinner"><i class="fa-solid fa-spinner fa-spin"></i></div>' +
             '<span>Generating...</span>' +
         '</div>',
@@ -635,6 +908,7 @@ function showLoading() {
  * Removes the loading overlay from the tab content area.
  */
 function hideLoading() {
+    state.$container?.find('.tsb-tab-content').removeClass('tsb-loading-active');
     state.$container?.find('.tsb-loading').remove();
 }
 
@@ -644,6 +918,115 @@ function hideLoading() {
  */
 function setButtonsDisabled(disabled) {
     state.$container?.find('.tsb-btn').prop('disabled', disabled);
+}
+
+// === Character field handlers ===
+
+/**
+ * Handles clicking a per-field Regenerate button on the character step.
+ * Regenerates only the targeted field while keeping all others intact.
+ * @param {Event} event - The delegated click event.
+ */
+async function handleFieldRegenerateClick(event) {
+    if (state.generating) return;
+
+    const $btn = $(event.currentTarget);
+    const fieldName = $btn.data('field');
+    if (!fieldName) return;
+
+    const stepData = getStepData('character');
+    const userInput = stepData.userInput || '';
+    const currentFields = stepData.fields || {};
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    $btn.prop('disabled', true);
+
+    // Show a mini spinner on the button
+    const originalHtml = $btn.html();
+    $btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
+
+    try {
+        const result = await regenerateCharacterField(fieldName, userInput, currentFields);
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result) {
+            toastr.warning('AI returned an empty response for this field.');
+            return;
+        }
+
+        // Update state and the specific textarea
+        setCharacterField(fieldName, result);
+        state.$container
+            .find(`.tsb-field-input[data-field="${fieldName}"]`)
+            .val(result);
+
+        toastr.success(`${fieldName} regenerated!`);
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Field regeneration failed:', err);
+        toastr.error('Field regeneration failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            $btn.prop('disabled', false).html(originalHtml);
+        }
+    }
+}
+
+/** Debounced handler for character field text input — syncs edits to state */
+const handleFieldInput = debounce(function (event) {
+    const $textarea = $(event.target);
+    const fieldName = $textarea.data('field');
+    if (fieldName) {
+        setCharacterField(fieldName, $textarea.val() || '');
+    }
+}, 300);
+
+/**
+ * Handles debounced input on speech example textareas.
+ * Updates the specific speech_examples array index in state.
+ */
+const handleSpeechExampleInput = debounce(function (event) {
+    const $textarea = $(event.target);
+    const index = parseInt($textarea.data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (!Array.isArray(stepData.fields.speech_examples)) {
+        stepData.fields.speech_examples = [];
+    }
+    stepData.fields.speech_examples[index] = $textarea.val() || '';
+}, 300);
+
+/**
+ * Handles clicking the "Add Speech Example" button.
+ * Appends a new blank speech example and re-renders.
+ */
+function handleAddExampleClick() {
+    const stepData = getStepData('character');
+    if (!Array.isArray(stepData.fields.speech_examples)) {
+        stepData.fields.speech_examples = [];
+    }
+    stepData.fields.speech_examples.push('');
+    renderCharacterStep();
+}
+
+/**
+ * Handles clicking the remove button on a speech example.
+ * Removes the targeted example by index and re-renders.
+ * @param {Event} event - The delegated click event.
+ */
+function handleRemoveExampleClick(event) {
+    const index = parseInt($(event.currentTarget).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.fields.speech_examples)) {
+        stepData.fields.speech_examples.splice(index, 1);
+    }
+    renderCharacterStep();
 }
 
 /**

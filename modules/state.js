@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS = {
     scenarioMaxTokens: 0,
     scenarioSections: ['setting', 'timePeriod', 'premise', 'keyThemes', 'toneAtmosphere', 'storyHooks'],
     personaMaxTokens: 0,
+    characterDetailLevel: 'balanced',
 };
 
 /**
@@ -35,6 +36,7 @@ function createBlankSession() {
             accepted: '',
         },
         persona: {
+            personaName: '',
             userInput: '',
             generated: '',
             accepted: '',
@@ -138,6 +140,15 @@ export function getStepData(stepName) {
  */
 export function updateStepData(stepName, data) {
     Object.assign(session[stepName], data);
+}
+
+/**
+ * Updates a specific field in the character step's fields object.
+ * @param {string} fieldName - The field key (e.g. 'body', 'traits').
+ * @param {*} value - The new value for the field.
+ */
+export function setCharacterField(fieldName, value) {
+    session.character.fields[fieldName] = value;
 }
 
 /**
