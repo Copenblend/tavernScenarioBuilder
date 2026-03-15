@@ -3,9 +3,27 @@
         <i class="fa-solid fa-hat-wizard"></i>
         <span>Tavern Scenario Builder</span>
     </div>
-    <button class="tsb-close-btn menu_button" title="Close">
-        <i class="fa-solid fa-xmark"></i>
-    </button>
+    <div class="tsb-header-actions">
+        <button class="tsb-settings-toggle menu_button" title="Settings">
+            <i class="fa-solid fa-gear"></i>
+        </button>
+        <button class="tsb-close-btn menu_button" title="Close">
+            <i class="fa-solid fa-xmark"></i>
+        </button>
+    </div>
+</div>
+
+<div class="tsb-settings-panel" style="display:none;">
+    <div class="tsb-settings-row">
+        <label class="tsb-settings-label" for="tsb-system-prompt-prefix">
+            <i class="fa-solid fa-terminal"></i>
+            System Prompt Injection
+        </label>
+        <input type="text" id="tsb-system-prompt-prefix"
+               class="tsb-settings-input text_pole"
+               placeholder="e.g. /nothink&#10;" />
+        <span class="tsb-settings-hint">Sent as a separate system message at the end of each generation (e.g. /nothink\n for GLM-4.6)</span>
+    </div>
 </div>
 
 <div class="tsb-body">
