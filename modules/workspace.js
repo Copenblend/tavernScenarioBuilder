@@ -18,6 +18,7 @@ import {
     generateCharacterLorebook, generateSingleLorebookEntry, regenerateLorebookEntry,
     generateLocation, generateSingleLocationEntry, regenerateLocationEntry,
     generateSpeechExample,
+    generateFirstMessage, regenerateFirstMessage,
 } from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
 import { converter } from '/script.js';
@@ -101,6 +102,10 @@ export function init($container) {
 
     // Speech example handlers
     $container.on('click.tsbWorkspace', '.tsb-btn-gen-example', handleGenerateExampleClick);
+
+    // First message handlers
+    $container.on('click.tsbWorkspace', '.tsb-btn-generate-first-message', handleGenerateFirstMessageClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-create-all', handleCreateAllClick);
 
     // Constraint inputs — persist on change
     $container.on('input.tsbWorkspace', '#tsb-hooks', function () {
@@ -216,6 +221,9 @@ function renderStepContent(stepName) {
             break;
         case 'location':
             renderLocationStep();
+            break;
+        case 'firstMessage':
+            renderFirstMessageStep();
             break;
         default: {
             // Placeholder for unimplemented steps
@@ -777,6 +785,68 @@ function renderLocationStep() {
 }
 
 /**
+ * Renders the First Message step UI.
+ * No input textarea — auto-generates from all accumulated context.
+ * Shows Generate button, output area with Accept/Regenerate, and Create All button after accept.
+ */
+function renderFirstMessageStep() {
+    const stepData = getStepData('firstMessage');
+    const outputContent = stepData.accepted || stepData.generated || '';
+    const hasOutput = !!outputContent;
+    const isAccepted = !!stepData.accepted;
+
+    const html =
+        '<div class="tsb-step" data-step="firstMessage">' +
+            '<div class="tsb-step-input">' +
+                '<label class="tsb-step-label">Describe the opening scene' +
+                    '<span class="tsb-tooltip">' +
+                        '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                        '<span class="tsb-tooltip-text">Optionally describe what you want the opening message to look like — the setting, mood, time of day, or situation. Leave blank to let the AI decide based on all established context.</span>' +
+                    '</span>' +
+                '</label>' +
+                '<textarea class="tsb-input-area" placeholder="e.g. The character is waiting at a rain-soaked bus stop at midnight, lost in thought...">' +
+                    escapeHTML(stepData.userInput || '') +
+                '</textarea>' +
+                '<div class="tsb-step-actions">' +
+                    '<button class="tsb-btn tsb-btn-generate-first-message menu_button" ' +
+                        (hasOutput ? 'style="display:none"' : '') + '>' +
+                        '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate First Message' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="tsb-step-output" ' + (hasOutput ? '' : 'style="display:none"') + '>' +
+                '<div class="tsb-output-header">' +
+                    '<label class="tsb-step-label">Generated First Message</label>' +
+                    '<button class="tsb-btn tsb-btn-edit menu_button" title="Edit">' +
+                        '<i class="fa-solid fa-pen"></i> Edit' +
+                    '</button>' +
+                '</div>' +
+                '<div class="tsb-markdown-preview">' +
+                    (hasOutput ? renderMarkdown(outputContent) : '') +
+                '</div>' +
+                '<textarea class="tsb-output-area" style="display:none">' +
+                    escapeHTML(outputContent) +
+                '</textarea>' +
+                '<div class="tsb-step-actions">' +
+                    '<button class="tsb-btn tsb-btn-accept menu_button">' +
+                        '<i class="fa-solid fa-check"></i> Accept' +
+                    '</button>' +
+                    '<button class="tsb-btn tsb-btn-regenerate menu_button">' +
+                        '<i class="fa-solid fa-rotate"></i> Regenerate' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="tsb-create-all-container" ' + (isAccepted ? '' : 'style="display:none"') + '>' +
+                '<button class="tsb-btn tsb-btn-create-all menu_button">' +
+                    '<i class="fa-solid fa-hammer"></i> Create in SillyTavern' +
+                '</button>' +
+            '</div>' +
+        '</div>';
+
+    state.$container.find('.tsb-tab-content').html(html);
+}
+
+/**
  * Handles click on a tab element.
  * @param {Event} event - The delegated click event.
  */
@@ -986,6 +1056,16 @@ function handleAcceptClick(event) {
         switchTab(nextStep);
     }
 
+    // First message is the last step — show the Create All button
+    if (stepName === 'firstMessage') {
+        $step.find('.tsb-create-all-container').show();
+        const $tab = state.$container.find('.tsb-tab[data-step="firstMessage"]');
+        if (!$tab.hasClass('tsb-tab-completed')) {
+            $tab.addClass('tsb-tab-completed')
+                .append(' <i class="fa-solid fa-check"></i>');
+        }
+    }
+
     toastr.success(`${TABS.find(t => t.step === stepName)?.label || stepName} accepted!`);
 }
 
@@ -1000,6 +1080,49 @@ async function handleRegenerateClick(event) {
     const $step = $(event.currentTarget).closest('.tsb-step');
     const stepName = $step.data('step');
     const stepData = getStepData(stepName);
+
+    // First message regeneration — reads optional user input from textarea
+    if (stepName === 'firstMessage') {
+        const previousOutput = stepData.generated || stepData.accepted || '';
+        const userInput = $step.find('.tsb-input-area').val()?.trim() || '';
+
+        // Persist user input
+        updateStepData('firstMessage', { userInput });
+
+        const currentGenId = ++state.generationId;
+        state.generating = true;
+        setButtonsDisabled(true);
+        showLoading();
+
+        try {
+            const result = await regenerateFirstMessage(previousOutput, userInput);
+
+            if (currentGenId !== state.generationId) return;
+
+            if (!result) {
+                toastr.warning('AI returned an empty response. Try regenerating again.');
+                return;
+            }
+
+            updateStepData('firstMessage', { generated: result });
+            const $output = $step.find('.tsb-step-output');
+            $output.find('.tsb-output-area').val(result);
+            $output.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
+            $output.find('.tsb-output-area').hide();
+            $output.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
+        } catch (err) {
+            if (currentGenId !== state.generationId) return;
+            console.error('[TavernScenarioBuilder] First message regeneration failed:', err);
+            toastr.error('Regeneration failed. Please check your connection and try again.');
+        } finally {
+            if (currentGenId === state.generationId) {
+                state.generating = false;
+                setButtonsDisabled(false);
+                hideLoading();
+            }
+        }
+        return;
+    }
 
     // Read current prompt from textarea — user may have edited it since last generate
     const currentInput = $step.find('.tsb-input-area').val()?.trim();
@@ -1743,6 +1866,65 @@ const handleLocationPromptInput = debounce(function (event) {
         stepData.entries[index].userPrompt = $(event.target).val() || '';
     }
 }, 300);
+
+/**
+ * Handles clicking "Generate First Message".
+ * Calls AI generation using all accumulated context, no user input needed.
+ */
+async function handleGenerateFirstMessageClick() {
+    if (state.generating) return;
+
+    const $step = state.$container.find('.tsb-step[data-step="firstMessage"]');
+    const userInput = $step.find('.tsb-input-area').val()?.trim() || '';
+
+    // Persist user input
+    updateStepData('firstMessage', { userInput });
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    setButtonsDisabled(true);
+    showLoading();
+
+    try {
+        const result = await generateFirstMessage(userInput);
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result) {
+            toastr.warning('AI returned an empty response. Try generating again.');
+            return;
+        }
+
+        updateStepData('firstMessage', { generated: result });
+
+        const $step = state.$container.find('.tsb-step[data-step="firstMessage"]');
+        const $output = $step.find('.tsb-step-output');
+        $output.find('.tsb-output-area').val(result);
+        $output.find('.tsb-markdown-preview').html(renderMarkdown(result)).show();
+        $output.find('.tsb-output-area').hide();
+        $output.find('.tsb-btn-edit').html('<i class="fa-solid fa-pen"></i> Edit');
+        $output.show();
+        $step.find('.tsb-btn-generate-first-message').hide();
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] First message generation failed:', err);
+        toastr.error('Generation failed. Please check your connection and try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            setButtonsDisabled(false);
+            hideLoading();
+        }
+    }
+}
+
+/**
+ * Handles clicking "Create in SillyTavern".
+ * Placeholder until tsb-11 implements the creation module.
+ */
+function handleCreateAllClick() {
+    toastr.info('Create in SillyTavern is not yet implemented. Coming soon!');
+}
 
 /**
  * Cleans up event handlers and nulls references.

@@ -75,6 +75,7 @@ function createBlankSession() {
             entries: [],
         },
         firstMessage: {
+            userInput: '',
             generated: '',
             accepted: '',
         },

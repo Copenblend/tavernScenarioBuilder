@@ -999,4 +999,24 @@ select.tsb-constraint-input {
     color: var(--SmartThemeBodyColor, #ccc);
 }
 
+/* --- First Message step --- */
+
+.tsb-step-description {
+    color: var(--SmartThemeBodyColor, #ccc);
+    font-size: 0.9em;
+    opacity: 0.85;
+    margin: 0 0 12px 0;
+    line-height: 1.4;
+}
+
+.tsb-create-all-container {
+    margin-top: 16px;
+    text-align: center;
+}
+
+.tsb-btn-create-all {
+    font-size: 1.1em;
+    padding: 10px 24px;
+}
+
 
