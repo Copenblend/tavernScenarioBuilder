@@ -7,6 +7,7 @@
 
 import { generateRaw } from '/script.js';
 import { getAccumulatedContext, getSetting } from './state.js';
+import { extractJSON } from './utils.js';
 
 /** Appended to every system prompt to ensure unrestricted creative output */
 const CREATIVE_FREEDOM =
@@ -211,9 +212,10 @@ function buildPersonaConstraints(constraints) {
  * @param {string} userInput - The user's persona description/concept.
  * @param {object} constraints - User-specified constraints.
  * @param {number} constraints.maxTokens - Token budget (0 = no limit).
+ * @param {string} [personaName] - Optional persona name to include in the prompt.
  * @returns {Promise<string>} Prose persona description.
  */
-export async function generatePersona(userInput, constraints) {
+export async function generatePersona(userInput, constraints, personaName) {
     const systemPrompt =
         'You are a character creation assistant specializing in crafting player personas for ' +
         'roleplay scenarios. Your output will be used as a SillyTavern persona description.\n\n' +
@@ -222,9 +224,15 @@ export async function generatePersona(userInput, constraints) {
 
     const context = getAccumulatedContext();
 
+    const nameDirective = personaName
+        ? `The persona's name is "${personaName}". Use this name when referring to the character.\n\n`
+        : '';
+
     const prompt =
         (context ? context + '\n\n' : '') +
-        'The user wants to create their player persona for this scenario. Here is their description:\n\n' +
+        'The user wants to create their player persona for this scenario. ' +
+        nameDirective +
+        'Here is their description:\n\n' +
         userInput + '\n\n' +
         'OUTPUT FORMAT:\n' +
         'Write a persona description as continuous prose (no markdown headers). Write 2-4 paragraphs ' +
@@ -241,9 +249,10 @@ export async function generatePersona(userInput, constraints) {
  * @param {string} previousOutput - The previous generation to avoid repeating.
  * @param {object} constraints - User-specified constraints.
  * @param {number} constraints.maxTokens - Token budget (0 = no limit).
+ * @param {string} [personaName] - Optional persona name to include in the prompt.
  * @returns {Promise<string>} New prose persona description.
  */
-export async function regeneratePersona(userInput, previousOutput, constraints) {
+export async function regeneratePersona(userInput, previousOutput, constraints, personaName) {
     const systemPrompt =
         'You are a character creation assistant specializing in crafting player personas for ' +
         'roleplay scenarios. Your output will be used as a SillyTavern persona description.\n\n' +
@@ -260,7 +269,9 @@ export async function regeneratePersona(userInput, previousOutput, constraints) 
         'Key elements from the previous version to AVOID repeating:\n' +
         prevSummary + '\n\n' +
         (context ? context + '\n\n' : '') +
-        'The user wants to create their player persona for this scenario. Here is their description:\n\n' +
+        'The user wants to create their player persona for this scenario. ' +
+        (personaName ? `The persona's name is "${personaName}". Use this name when referring to the character.\n\n` : '') +
+        'Here is their description:\n\n' +
         userInput + '\n\n' +
         'OUTPUT FORMAT:\n' +
         'Write a persona description as continuous prose (no markdown headers). Write 2-4 paragraphs ' +
@@ -272,26 +283,174 @@ export async function regeneratePersona(userInput, previousOutput, constraints) 
     return callGeneration(systemPrompt, prompt);
 }
 
-// === Stub functions for future tickets ===
+// === Character generation ===
+
+/** Token budget map for character detail levels */
+const CHARACTER_DETAIL_TOKENS = {
+    minimal: 1000,
+    balanced: 2000,
+    verbose: 5000,
+};
 
 /**
- * Generates character fields as JSON. Stub — implemented in tsb-8.
- * @param {string} _userInput
- * @returns {Promise<object|null>}
+ * Builds the detail level constraint line for character prompts.
+ * @param {object} [constraints] - Character generation constraints.
+ * @returns {string} Constraint line or empty string.
  */
-export async function generateCharacter(_userInput) {
+function buildCharacterDetailConstraint(constraints) {
+    if (!constraints) return '';
+    const level = constraints.detailLevel || 'balanced';
+    const tokens = CHARACTER_DETAIL_TOKENS[level];
+    if (tokens) {
+        return `- Your ENTIRE JSON response must be approximately ${tokens} tokens total. ` +
+            'Plan your output length carefully — distribute detail across all fields proportionally. ' +
+            'The response must be fully formed with no truncated fields.\n';
+    }
+    // 'connection' level — use the connection profile limit, no explicit token constraint
+    return '- Use the maximum detail allowed by your context window. Be as thorough as possible for every field.\n';
+}
+
+/**
+ * Generates all character fields as a JSON object from user description.
+ * Uses accumulated context (scenario + persona) for consistency.
+ * Retries up to 3 times on JSON parse failure per §3.10.
+ * @param {string} userInput - The user's character description.
+ * @param {object} [constraints] - Character generation constraints.
+ * @param {string} [constraints.detailLevel] - Detail level: minimal, balanced, verbose, connection.
+ * @returns {Promise<object|null>} Parsed character fields object, or null on failure.
+ */
+export async function generateCharacter(userInput, constraints) {
+    const systemPrompt =
+        'You are an expert character designer for interactive fiction. You create extremely ' +
+        'detailed, vivid character profiles that bring characters to life. Every field must be ' +
+        'filled with specific, concrete details — never use generic placeholders.\n\n' +
+        'Your output must cover all requested fields with rich detail, maintaining internal ' +
+        'consistency across all fields and with the established scenario.';
+
+    const context = getAccumulatedContext();
+
+    const basePrompt =
+        (context ? context + '\n\n' : '') +
+        'The user wants to create a character for this scenario. Here is their description:\n\n' +
+        userInput + '\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Output a JSON object with these exact keys (all values are strings, except speech_examples which is a string array):\n' +
+        '{\n' +
+        '    "name": "",\n' +
+        '    "age": "",\n' +
+        '    "hair": "",\n' +
+        '    "eyes": "",\n' +
+        '    "height": "",\n' +
+        '    "body": "",\n' +
+        '    "face": "",\n' +
+        '    "features": "",\n' +
+        '    "traits": "",\n' +
+        '    "habits": "",\n' +
+        '    "behavior": "",\n' +
+        '    "likes": "",\n' +
+        '    "dislikes": "",\n' +
+        '    "sexuality_orientation": "",\n' +
+        '    "sexuality_kinks": "",\n' +
+        '    "sexuality_likes": "",\n' +
+        '    "sexuality_dislikes": "",\n' +
+        '    "speaking_style": "",\n' +
+        '    "speaking_quirks": "",\n' +
+        '    "personality_summary": "",\n' +
+        '    "scenario": "",\n' +
+        '    "character_note": "",\n' +
+        '    "speech_examples": ["example1", "example2", "example3"]\n' +
+        '}\n\n' +
+        'FIELD GUIDELINES:\n' +
+        '- "body": Must be extremely detailed and explicit. Include full anatomical description including sex organs, breast size/shape, skin texture, etc.\n' +
+        '- "features": Unique distinguishing marks — moles, scars, tattoos, birthmarks, etc.\n' +
+        '- "traits": Personality quirks and defining characteristics\n' +
+        '- "habits": Behavioral patterns and routines\n' +
+        '- "likes"/"dislikes": Broad preferences — foods, activities, people, situations\n' +
+        '- "sexuality_kinks"/"sexuality_likes"/"sexuality_dislikes": Detailed sexual preferences\n' +
+        '- "speaking_style": How they talk — formal, casual, accent, vocabulary level\n' +
+        '- "speaking_quirks": Verbal tics, catchphrases, unique speech patterns\n' +
+        '- "personality_summary": 2-3 sentence personality overview\n' +
+        '- "scenario": How this character fits into the established scenario, their role and current situation\n' +
+        '- "character_note": Narrative guidelines for roleplay — how to portray the character, important behavioral rules\n' +
+        '- "speech_examples": 3-5 example messages showing the character\'s unique voice. Each should be 2-4 sentences showing dialogue and actions in asterisks.\n\n' +
+        'CONSTRAINTS:\n' +
+        buildCharacterDetailConstraint(constraints) +
+        '- Output ONLY valid JSON — no markdown, no code blocks, no commentary before or after\n' +
+        '- Be extremely detailed for every field\n' +
+        '- Maintain internal consistency across all fields\n' +
+        '- Maintain consistency with the established scenario and persona\n' +
+        '- Do not use the character\'s name in descriptions — use "they/them" or describe directly';
+
+    // Retry loop for JSON parse failures (§3.10)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        let prompt = basePrompt;
+        if (attempt === 2) {
+            prompt += '\n\nIMPORTANT: Output ONLY valid JSON. No markdown code blocks, no commentary, no text before or after the JSON.';
+        } else if (attempt === 3) {
+            prompt += '\n\nCRITICAL: Your previous responses were not valid JSON. Output NOTHING except a single JSON object starting with { and ending with }. No other text whatsoever.';
+        }
+
+        const raw = await callGeneration(systemPrompt, prompt);
+        if (!raw) continue;
+
+        const parsed = extractJSON(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            // Normalize speech_examples to array of strings
+            if (typeof parsed.speech_examples === 'string') {
+                parsed.speech_examples = [parsed.speech_examples];
+            } else if (!Array.isArray(parsed.speech_examples)) {
+                parsed.speech_examples = [];
+            }
+            return parsed;
+        }
+
+        console.warn(`[TavernScenarioBuilder] Character JSON parse failed (attempt ${attempt}/3)`);
+    }
+
     return null;
 }
 
 /**
- * Regenerates a single character field. Stub — implemented in tsb-8.
- * @param {string} _fieldName
- * @param {string} _userInput
- * @param {object} _currentFields
- * @returns {Promise<string>}
+ * Regenerates a single character field with full character context.
+ * Returns plain text for the specified field only.
+ * @param {string} fieldName - The field key to regenerate (e.g. 'body', 'traits').
+ * @param {string} userInput - The original user character description.
+ * @param {object} currentFields - All current character field values.
+ * @returns {Promise<string>} The regenerated field value as plain text.
  */
-export async function regenerateCharacterField(_fieldName, _userInput, _currentFields) {
-    return '[Not yet implemented]';
+export async function regenerateCharacterField(fieldName, userInput, currentFields) {
+    const systemPrompt =
+        'You are an expert character designer for interactive fiction. You create extremely ' +
+        'detailed, vivid character profiles that bring characters to life. Every field must be ' +
+        'filled with specific, concrete details — never use generic placeholders.\n\n' +
+        'Your output must cover all requested fields with rich detail, maintaining internal ' +
+        'consistency across all fields and with the established scenario.';
+
+    const context = getAccumulatedContext();
+    const currentValue = currentFields[fieldName] || '';
+
+    // Build a clean JSON representation of current fields (excluding speech_examples for brevity)
+    const fieldsForContext = { ...currentFields };
+    if (Array.isArray(fieldsForContext.speech_examples)) {
+        fieldsForContext.speech_examples = fieldsForContext.speech_examples.slice(0, 2).map(e => e.substring(0, 100) + '...');
+    }
+
+    const prompt =
+        (context ? context + '\n\n' : '') +
+        '--- CURRENT CHARACTER PROFILE ---\n' +
+        JSON.stringify(fieldsForContext, null, 2) +
+        '\n--- END CHARACTER ---\n\n' +
+        `Regenerate ONLY the "${fieldName}" field for this character. Generate a COMPLETELY DIFFERENT version from the current value.\n\n` +
+        `Current value to replace: ${currentValue}\n\n` +
+        'OUTPUT FORMAT:\n' +
+        `Output ONLY the new value for the "${fieldName}" field as plain text. No JSON, no field name, no quotes, no formatting — just the content.\n\n` +
+        'CONSTRAINTS:\n' +
+        '- Must be consistent with all other character fields\n' +
+        '- Must be consistent with the scenario and persona\n' +
+        '- Must be significantly different from the current value\n' +
+        '- Be specific, detailed, and concrete';
+
+    return callGeneration(systemPrompt, prompt);
 }
 
 /**
