@@ -134,6 +134,12 @@ function getPreviewText(stepName) {
         case 'persona':
             text = data?.accepted || '';
             break;
+        case 'character': {
+            const name = data?.fields?.name || 'Unnamed';
+            const lorebookCount = Array.isArray(data?.lorebook) ? data.lorebook.length : 0;
+            text = name + '\n' + lorebookCount + ' lorebook ' + (lorebookCount === 1 ? 'entry' : 'entries');
+            break;
+        }
         case 'firstMessage':
             text = data?.accepted || '';
             break;
@@ -159,11 +165,48 @@ function getFullContent(stepName) {
             return data?.accepted || '';
         case 'persona':
             return data?.accepted || '';
+        case 'character':
+            return buildCharacterContent(data);
         case 'firstMessage':
             return data?.accepted || '';
         default:
             return '';
     }
+}
+
+/**
+ * Builds a full text summary of character data for the entries accordion.
+ * @param {object} data - The character step data.
+ * @returns {string} Formatted text with sub-sections.
+ */
+function buildCharacterContent(data) {
+    const fields = data?.fields || {};
+    const lorebook = data?.lorebook || [];
+    const lines = [];
+
+    if (fields.name) lines.push('Name: ' + fields.name);
+
+    // Physical
+    const physical = ['hair', 'eyes', 'skin', 'body', 'height', 'age_appearance', 'clothing_style', 'distinguishing_features']
+        .filter(k => fields[k])
+        .map(k => fields[k]);
+    if (physical.length) lines.push('\n— Physical Description —\n' + physical.join('. '));
+
+    // Personality
+    const personality = ['personality_overview', 'strengths', 'flaws', 'fears', 'desires', 'quirks_habits']
+        .filter(k => fields[k])
+        .map(k => fields[k]);
+    if (personality.length) lines.push('\n— Personality —\n' + personality.join('. '));
+
+    // Advanced
+    const advanced = ['backstory', 'relationships', 'world_info', 'system_prompt', 'post_history_instructions'];
+    const advParts = advanced.filter(k => fields[k]);
+    if (advParts.length) lines.push('\n— Advanced Definitions —\n' + advParts.map(k => fields[k]).join('\n'));
+
+    // Lorebook
+    lines.push('\n— Lorebook —\n' + lorebook.length + ' ' + (lorebook.length === 1 ? 'entry' : 'entries'));
+
+    return lines.join('\n');
 }
 
 /**

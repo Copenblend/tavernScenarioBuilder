@@ -6,7 +6,7 @@
  */
 
 import { generateRaw } from '/script.js';
-import { getAccumulatedContext, getSetting } from './state.js';
+import { getAccumulatedContext, getSetting, getStepData } from './state.js';
 import { extractJSON } from './utils.js';
 
 /** Appended to every system prompt to ensure unrestricted creative output */
@@ -454,20 +454,171 @@ export async function regenerateCharacterField(fieldName, userInput, currentFiel
 }
 
 /**
- * Generates character lorebook entries. Stub — implemented in tsb-9.
- * @returns {Promise<Array|null>}
+ * Composes a text summary of current character fields for use in prompts.
+ * @returns {string} Formatted character description.
+ */
+function composeCharacterContext() {
+    const f = getStepData('character')?.fields || {};
+    const lines = [];
+    if (f.name) lines.push(`Name: ${f.name}`);
+    if (f.age) lines.push(`Age: ${f.age}`);
+    if (f.hair) lines.push(`Hair: ${f.hair}`);
+    if (f.eyes) lines.push(`Eyes: ${f.eyes}`);
+    if (f.height) lines.push(`Height: ${f.height}`);
+    if (f.body) lines.push(`Body: ${f.body}`);
+    if (f.face) lines.push(`Face: ${f.face}`);
+    if (f.features) lines.push(`Features: ${f.features}`);
+    if (f.traits) lines.push(`Traits: ${f.traits}`);
+    if (f.habits) lines.push(`Habits: ${f.habits}`);
+    if (f.behavior) lines.push(`Behavior: ${f.behavior}`);
+    if (f.likes) lines.push(`Likes: ${f.likes}`);
+    if (f.dislikes) lines.push(`Dislikes: ${f.dislikes}`);
+    if (f.sexuality_orientation) lines.push(`Orientation: ${f.sexuality_orientation}`);
+    if (f.sexuality_kinks) lines.push(`Kinks: ${f.sexuality_kinks}`);
+    if (f.sexuality_likes) lines.push(`Sexual Likes: ${f.sexuality_likes}`);
+    if (f.sexuality_dislikes) lines.push(`Sexual Dislikes: ${f.sexuality_dislikes}`);
+    if (f.speaking_style) lines.push(`Speaking Style: ${f.speaking_style}`);
+    if (f.speaking_quirks) lines.push(`Speaking Quirks: ${f.speaking_quirks}`);
+    if (f.personality_summary) lines.push(`Personality: ${f.personality_summary}`);
+    if (f.scenario) lines.push(`Scenario: ${f.scenario}`);
+    if (f.character_note) lines.push(`Character Note: ${f.character_note}`);
+    return lines.join('\n');
+}
+
+/**
+ * Generates character lorebook entries from accumulated context + character fields.
+ * Uses §3.5 prompt design. Retries up to 3 times on JSON parse failure.
+ * @returns {Promise<Array|null>} Array of lorebook entry objects, or null on failure.
  */
 export async function generateCharacterLorebook() {
+    const systemPrompt =
+        'You are a world-building specialist creating lorebook entries for a roleplay character. ' +
+        'Each entry should be a self-contained piece of lore that enriches the character when ' +
+        'activated by its keywords.\n\n' +
+        'Write entries that add depth without contradicting established character details. ' +
+        'Each entry should be 2-5 paragraphs of rich, usable detail.';
+
+    const context = getAccumulatedContext();
+    const charContext = composeCharacterContext();
+
+    const basePrompt =
+        (context ? context + '\n\n' : '') +
+        (charContext ? '--- CHARACTER PROFILE ---\n' + charContext + '\n--- END CHARACTER ---\n\n' : '') +
+        'Generate lorebook entries that provide deeper details about this character. Cover areas such as:\n' +
+        '- Background and history\n' +
+        '- Key relationships and social connections\n' +
+        '- Detailed personality nuances\n' +
+        '- Daily life and routines\n' +
+        '- Sexual history and detailed preferences\n' +
+        '- Fears, dreams, and inner conflicts\n' +
+        '- Skills, talents, or knowledge areas\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Output a JSON array of lorebook entries:\n' +
+        '[\n' +
+        '    {\n' +
+        '        "title": "Entry Title",\n' +
+        '        "keywords": ["keyword1", "keyword2"],\n' +
+        '        "content": "Detailed lore content..."\n' +
+        '    }\n' +
+        ']\n\n' +
+        'Generate 5-8 entries covering different aspects of the character.\n\n' +
+        'CONSTRAINTS:\n' +
+        '- Output ONLY valid JSON — no markdown, no code blocks, no commentary\n' +
+        '- Keywords should be words that would naturally appear in roleplay conversation to trigger this entry\n' +
+        '- Each entry should be self-contained and useful on its own\n' +
+        '- Maintain perfect consistency with the character profile\n' +
+        '- Be explicit and detailed where appropriate';
+
+    // Retry loop for JSON parse failures
+    for (let attempt = 1; attempt <= 3; attempt++) {
+        let prompt = basePrompt;
+        if (attempt === 2) {
+            prompt += '\n\nIMPORTANT: Output ONLY valid JSON. No markdown code blocks, no commentary, no text before or after the JSON.';
+        } else if (attempt === 3) {
+            prompt += '\n\nCRITICAL: Your previous responses were not valid JSON. Output NOTHING except a single JSON array starting with [ and ending with ]. No other text whatsoever.';
+        }
+
+        const raw = await callGeneration(systemPrompt, prompt);
+        if (!raw) continue;
+
+        const parsed = extractJSON(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+            // Normalize entries to ensure required fields
+            return parsed.map(entry => ({
+                title: entry.title || 'Untitled',
+                keywords: Array.isArray(entry.keywords) ? entry.keywords : [],
+                content: entry.content || '',
+            }));
+        }
+
+        console.warn(`[TavernScenarioBuilder] Lorebook JSON parse failed (attempt ${attempt}/3)`);
+    }
+
     return null;
 }
 
 /**
- * Regenerates a lorebook entry. Stub — implemented in tsb-9.
- * @param {object} _entry
- * @param {number} _index
- * @returns {Promise<object|null>}
+ * Regenerates a single lorebook entry with a variation instruction.
+ * @param {object} entry - The current entry to regenerate.
+ * @param {number} index - The entry's index in the array.
+ * @returns {Promise<object|null>} Replacement entry object, or null on failure.
  */
-export async function regenerateLorebookEntry(_entry, _index) {
+export async function regenerateLorebookEntry(entry, index) {
+    const systemPrompt =
+        'You are a world-building specialist creating lorebook entries for a roleplay character. ' +
+        'Each entry should be a self-contained piece of lore that enriches the character when ' +
+        'activated by its keywords.\n\n' +
+        'Write entries that add depth without contradicting established character details. ' +
+        'Each entry should be 2-5 paragraphs of rich, usable detail.';
+
+    const context = getAccumulatedContext();
+    const charContext = composeCharacterContext();
+
+    const prompt =
+        'IMPORTANT: Generate a COMPLETELY DIFFERENT version of this lorebook entry. ' +
+        'Take a fresh creative direction while maintaining consistency with established context.\n\n' +
+        (context ? context + '\n\n' : '') +
+        (charContext ? '--- CHARACTER PROFILE ---\n' + charContext + '\n--- END CHARACTER ---\n\n' : '') +
+        'Current entry to replace:\n' +
+        `Title: ${entry.title}\n` +
+        `Keywords: ${(entry.keywords || []).join(', ')}\n` +
+        `Content: ${(entry.content || '').substring(0, 300)}\n\n` +
+        'OUTPUT FORMAT:\n' +
+        'Output a single JSON object (NOT an array):\n' +
+        '{\n' +
+        '    "title": "New Entry Title",\n' +
+        '    "keywords": ["keyword1", "keyword2"],\n' +
+        '    "content": "New detailed lore content..."\n' +
+        '}\n\n' +
+        'CONSTRAINTS:\n' +
+        '- Output ONLY valid JSON — no markdown, no code blocks, no commentary\n' +
+        '- Must be significantly different from the current entry\n' +
+        '- Keywords should be words that would naturally appear in roleplay conversation\n' +
+        '- Maintain consistency with the character profile\n' +
+        '- The entry should cover a similar topic area but with fresh content';
+
+    const raw = await callGeneration(systemPrompt, prompt);
+    if (!raw) return null;
+
+    const parsed = extractJSON(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return {
+            title: parsed.title || entry.title,
+            keywords: Array.isArray(parsed.keywords) ? parsed.keywords : entry.keywords,
+            content: parsed.content || '',
+        };
+    }
+
+    // Try extracting from array if AI wrapped it
+    if (Array.isArray(parsed) && parsed.length > 0) {
+        const first = parsed[0];
+        return {
+            title: first.title || entry.title,
+            keywords: Array.isArray(first.keywords) ? first.keywords : entry.keywords,
+            content: first.content || '',
+        };
+    }
+
     return null;
 }
 

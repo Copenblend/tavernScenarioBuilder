@@ -818,6 +818,92 @@ select.tsb-constraint-input {
     color: var(--SmartThemeQuoteColor, #b380d0) !important;
 }
 
+/* --- Lorebook cards --- */
+
+.tsb-lorebook-section {
+    margin-top: 20px;
+}
+
+.tsb-lorebook-section > .tsb-fields-section-title {
+    text-transform: none;
+}
+
+.tsb-lorebook-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.tsb-lorebook-card {
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 6px;
+    padding: 10px;
+}
+
+.tsb-lorebook-card-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.tsb-lorebook-card-header .tsb-lorebook-title-input {
+    flex: 1;
+    font-weight: bold;
+}
+
+.tsb-lorebook-card-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+}
+
+.tsb-lorebook-keywords-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.tsb-lorebook-keywords-row .tsb-field-label {
+    flex-shrink: 0;
+    font-size: 0.85em;
+    color: var(--SmartThemeQuoteColor, #999);
+}
+
+.tsb-lorebook-keywords-row .tsb-lorebook-keywords-input {
+    flex: 1;
+    font-size: 0.9em;
+}
+
+.tsb-lorebook-content {
+    width: 100%;
+    min-height: 100px;
+    resize: vertical;
+}
+
+.tsb-btn-remove-lorebook {
+    color: #e55 !important;
+}
+
+.tsb-btn-remove-lorebook:hover {
+    color: #f77 !important;
+}
+
+.tsb-btn-add-lorebook {
+    width: 100%;
+    border: 2px dashed var(--SmartThemeBorderColor, #555) !important;
+    background: transparent !important;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.tsb-btn-add-lorebook:hover {
+    border-color: var(--SmartThemeQuoteColor, #b380d0) !important;
+    color: var(--SmartThemeQuoteColor, #b380d0) !important;
+}
+
 /* --- Loading overlay --- */
 
 .tsb-loading {

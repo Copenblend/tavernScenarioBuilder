@@ -9,12 +9,13 @@ import { escapeHTML, debounce } from './utils.js';
 import {
     getStepData, updateStepData, acceptStep,
     getCompletedSteps, STEPS, getSetting, setSetting,
-    setCharacterField,
+    setCharacterField, setCharacterLorebook,
 } from './state.js';
 import {
     generateScenario, regenerateScenario,
     generatePersona, regeneratePersona,
     generateCharacter, regenerateCharacterField,
+    generateCharacterLorebook, regenerateLorebookEntry,
 } from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
 import { converter } from '/script.js';
@@ -75,6 +76,15 @@ export function init($container) {
     $container.on('input.tsbWorkspace', '.tsb-speech-example-input', handleSpeechExampleInput);
     $container.on('click.tsbWorkspace', '.tsb-btn-add-example', handleAddExampleClick);
     $container.on('click.tsbWorkspace', '.tsb-btn-remove-example', handleRemoveExampleClick);
+
+    // Lorebook handlers
+    $container.on('click.tsbWorkspace', '.tsb-btn-gen-lorebook', handleGenLorebookClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-regen-lorebook', handleRegenLorebookClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-remove-lorebook', handleRemoveLorebookClick);
+    $container.on('click.tsbWorkspace', '.tsb-btn-add-lorebook', handleAddLorebookClick);
+    $container.on('input.tsbWorkspace', '.tsb-lorebook-title-input', handleLorebookTitleInput);
+    $container.on('input.tsbWorkspace', '.tsb-lorebook-keywords-input', handleLorebookKeywordsInput);
+    $container.on('input.tsbWorkspace', '.tsb-lorebook-content', handleLorebookContentInput);
 
     // Constraint inputs — persist on change
     $container.on('input.tsbWorkspace', '#tsb-hooks', function () {
@@ -598,6 +608,44 @@ function renderCharacterStep() {
         '</button>' +
     '</div>';
 
+    // Character lorebooks section
+    const lorebook = Array.isArray(stepData.lorebook) ? stepData.lorebook : [];
+    const hasLorebook = lorebook.length > 0;
+
+    html += '<div class="tsb-fields-section tsb-lorebook-section">' +
+        '<div class="tsb-fields-section-title">Character Lorebooks' +
+            '<span class="tsb-tooltip">' +
+                '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                '<span class="tsb-tooltip-text">Lorebook entries provide additional character lore that activates when matching keywords appear in conversation. They enrich the character without bloating the main description. To generate a single entry, click Add Entry then use the regenerate button on that entry.</span>' +
+            '</span>' +
+        '</div>' +
+        '<div class="tsb-lorebook-list">';
+
+    if (hasLorebook) {
+        for (let i = 0; i < lorebook.length; i++) {
+            html += buildLorebookCardHtml(lorebook[i], i);
+        }
+    }
+
+    html += '</div>' + // close tsb-lorebook-list
+        '<div class="tsb-step-actions tsb-lorebook-actions-row">' +
+            '<button class="tsb-btn tsb-btn-gen-lorebook menu_button">' +
+                '<i class="fa-solid fa-wand-magic-sparkles"></i> ' +
+                (hasLorebook ? 'Regenerate Lorebooks' : 'Generate Lorebooks') +
+            '</button>' +
+            '<button class="tsb-btn tsb-btn-add-lorebook menu_button">' +
+                '<i class="fa-solid fa-plus"></i> Add Entry' +
+            '</button>' +
+        '</div>' +
+    '</div>'; // close tsb-fields-section
+
+    // Accept Character button
+    html += '<div class="tsb-step-actions">' +
+        '<button class="tsb-btn tsb-btn-accept menu_button" data-step="character">' +
+            '<i class="fa-solid fa-check"></i> Accept Character' +
+        '</button>' +
+    '</div>';
+
     html += '</div>'; // close tsb-character-fields
     html += '</div>'; // close tsb-step
 
@@ -707,6 +755,35 @@ async function handleGenerateClick(event) {
 function handleAcceptClick(event) {
     const $step = $(event.currentTarget).closest('.tsb-step');
     const stepName = $step.data('step');
+
+    // Character step has special accept logic (fields + lorebook, no textarea)
+    if (stepName === 'character') {
+        const stepData = getStepData('character');
+        if (!stepData.fields?.name) {
+            toastr.warning('Nothing to accept. Generate character fields first.');
+            return;
+        }
+
+        // Mark accepted with a summary string for entries display
+        updateStepData('character', { accepted: stepData.fields.name });
+        acceptStep('character');
+        addEntry('character');
+
+        const currentIndex = STEPS.indexOf('character');
+        if (currentIndex >= 0 && currentIndex < STEPS.length - 1) {
+            const nextStep = STEPS[currentIndex + 1];
+            unlockTab(nextStep);
+            const $tab = state.$container.find('.tsb-tab[data-step="character"]');
+            if (!$tab.hasClass('tsb-tab-completed')) {
+                $tab.addClass('tsb-tab-completed')
+                    .append(' <i class="fa-solid fa-check"></i>');
+            }
+            switchTab(nextStep);
+        }
+
+        toastr.success('Character accepted!');
+        return;
+    }
 
     // If user is editing, grab the textarea value; otherwise use state
     const $textarea = $step.find('.tsb-output-area');
@@ -1028,6 +1105,213 @@ function handleRemoveExampleClick(event) {
     }
     renderCharacterStep();
 }
+
+// === Lorebook handlers ===
+
+/**
+ * Builds the HTML for a single lorebook entry card.
+ * @param {object} entry - The lorebook entry { title, keywords, content }.
+ * @param {number} index - The entry's index.
+ * @returns {string} HTML string for the card.
+ */
+function buildLorebookCardHtml(entry, index) {
+    const keywordsStr = Array.isArray(entry.keywords) ? entry.keywords.join(', ') : '';
+    return (
+        '<div class="tsb-lorebook-card" data-index="' + index + '">' +
+            '<div class="tsb-lorebook-card-header">' +
+                '<input type="text" class="tsb-lorebook-title-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="Entry title" value="' + escapeHTML(entry.title || '') + '" />' +
+                '<div class="tsb-lorebook-card-actions">' +
+                    '<button class="tsb-btn tsb-btn-regen-lorebook menu_button" data-index="' + index + '" title="Regenerate entry">' +
+                        '<i class="fa-solid fa-rotate"></i>' +
+                    '</button>' +
+                    '<button class="tsb-btn tsb-btn-remove-lorebook menu_button" data-index="' + index + '" title="Remove entry">' +
+                        '<i class="fa-solid fa-trash"></i>' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="tsb-lorebook-keywords-row">' +
+                '<label class="tsb-field-label">Keywords</label>' +
+                '<input type="text" class="tsb-lorebook-keywords-input text_pole" data-index="' + index + '" ' +
+                    'placeholder="keyword1, keyword2, ..." value="' + escapeHTML(keywordsStr) + '" />' +
+            '</div>' +
+            '<textarea class="tsb-lorebook-content" data-index="' + index + '" ' +
+                'placeholder="Lorebook entry content...">' +
+                escapeHTML(entry.content || '') +
+            '</textarea>' +
+        '</div>'
+    );
+}
+
+/**
+ * Handles clicking the "Generate Lorebooks" button.
+ * Generates lorebook entries for the current character.
+ */
+async function handleGenLorebookClick() {
+    if (state.generating) return;
+
+    const stepData = getStepData('character');
+    if (!stepData.fields?.name) {
+        toastr.warning('Generate character fields first before generating lorebooks.');
+        return;
+    }
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    setButtonsDisabled(true);
+    showLoading();
+
+    try {
+        const result = await generateCharacterLorebook();
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result || !Array.isArray(result) || result.length === 0) {
+            toastr.error('Could not parse lorebook data from AI response. Try generating again.');
+            return;
+        }
+
+        // Store in state
+        setCharacterLorebook(result);
+
+        // Re-render to show the entries
+        renderCharacterStep();
+        toastr.success(`${result.length} lorebook entries generated!`);
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Lorebook generation failed:', err);
+        toastr.error('Lorebook generation failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            setButtonsDisabled(false);
+            hideLoading();
+        }
+    }
+}
+
+/**
+ * Handles clicking the Regenerate button on a lorebook entry.
+ * Regenerates only the targeted entry.
+ * @param {Event} event - The delegated click event.
+ */
+async function handleRegenLorebookClick(event) {
+    if (state.generating) return;
+
+    const $btn = $(event.currentTarget);
+    const index = parseInt($btn.data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    const lorebook = stepData.lorebook || [];
+    if (index >= lorebook.length) return;
+
+    const currentGenId = ++state.generationId;
+    state.generating = true;
+    $btn.prop('disabled', true);
+
+    const originalHtml = $btn.html();
+    $btn.html('<i class="fa-solid fa-spinner fa-spin"></i>');
+
+    try {
+        const result = await regenerateLorebookEntry(lorebook[index], index);
+
+        if (currentGenId !== state.generationId) return;
+
+        if (!result) {
+            toastr.warning('AI returned an empty response for this entry.');
+            return;
+        }
+
+        // Update state
+        lorebook[index] = result;
+        setCharacterLorebook(lorebook);
+
+        // Update the card DOM in-place
+        const $card = state.$container.find(`.tsb-lorebook-card[data-index="${index}"]`);
+        $card.find('.tsb-lorebook-title-input').val(result.title || '');
+        $card.find('.tsb-lorebook-keywords-input').val(
+            Array.isArray(result.keywords) ? result.keywords.join(', ') : '',
+        );
+        $card.find('.tsb-lorebook-content').val(result.content || '');
+
+        toastr.success('Lorebook entry regenerated!');
+    } catch (err) {
+        if (currentGenId !== state.generationId) return;
+        console.error('[TavernScenarioBuilder] Lorebook entry regeneration failed:', err);
+        toastr.error('Entry regeneration failed. Please try again.');
+    } finally {
+        if (currentGenId === state.generationId) {
+            state.generating = false;
+            $btn.prop('disabled', false).html(originalHtml);
+        }
+    }
+}
+
+/**
+ * Handles clicking the Remove button on a lorebook entry.
+ * Removes the entry and re-renders.
+ * @param {Event} event - The delegated click event.
+ */
+function handleRemoveLorebookClick(event) {
+    const index = parseInt($(event.currentTarget).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.lorebook)) {
+        stepData.lorebook.splice(index, 1);
+        setCharacterLorebook(stepData.lorebook);
+    }
+    renderCharacterStep();
+}
+
+/**
+ * Handles clicking the "Add Entry" button for lorebooks.
+ * Appends a blank lorebook entry and re-renders.
+ */
+function handleAddLorebookClick() {
+    const stepData = getStepData('character');
+    if (!Array.isArray(stepData.lorebook)) {
+        stepData.lorebook = [];
+    }
+    stepData.lorebook.push({ title: '', keywords: [], content: '' });
+    setCharacterLorebook(stepData.lorebook);
+    renderCharacterStep();
+}
+
+/** Debounced handler for lorebook title input */
+const handleLorebookTitleInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.lorebook) && stepData.lorebook[index]) {
+        stepData.lorebook[index].title = $(event.target).val() || '';
+    }
+}, 300);
+
+/** Debounced handler for lorebook keywords input — splits on comma */
+const handleLorebookKeywordsInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.lorebook) && stepData.lorebook[index]) {
+        const raw = $(event.target).val() || '';
+        stepData.lorebook[index].keywords = raw.split(',').map(k => k.trim()).filter(Boolean);
+    }
+}, 300);
+
+/** Debounced handler for lorebook content textarea */
+const handleLorebookContentInput = debounce(function (event) {
+    const index = parseInt($(event.target).data('index'));
+    if (isNaN(index)) return;
+
+    const stepData = getStepData('character');
+    if (Array.isArray(stepData.lorebook) && stepData.lorebook[index]) {
+        stepData.lorebook[index].content = $(event.target).val() || '';
+    }
+}, 300);
 
 /**
  * Cleans up event handlers and nulls references.

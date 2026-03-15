@@ -152,6 +152,14 @@ export function setCharacterField(fieldName, value) {
 }
 
 /**
+ * Replaces the character lorebook entries array.
+ * @param {Array} entries - The new lorebook entries array.
+ */
+export function setCharacterLorebook(entries) {
+    session.character.lorebook = entries;
+}
+
+/**
  * Marks a step as completed, advances currentStep, and persists session.
  * @param {string} stepName - The step that was accepted.
  */
