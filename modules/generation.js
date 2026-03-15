@@ -864,11 +864,39 @@ export async function regenerateLocationEntry(entry, index, userInput, userPromp
 }
 
 /**
- * Generates first message. Stub — implemented in tsb-11.
- * @returns {Promise<string>}
+ * Generates the character's opening first message using all accumulated context.
+ * Uses §3.7 prompt design: third person, present tense, scene-setting prose.
+ * @param {string} [userInput] - Optional user guidance for the first message direction.
+ * @returns {Promise<string|null>} The generated first message text, or null on failure.
  */
-export async function generateFirstMessage() {
-    return '[Not yet implemented]';
+export async function generateFirstMessage(userInput) {
+    const systemPrompt =
+        'You are writing the opening message for a roleplay character. ' +
+        'This message sets the scene, establishes the character\'s voice, and invites the player to engage.\n\n' +
+        'Write in third person, present tense. Include environmental details, the character\'s actions ' +
+        'and thoughts, and a natural hook that gives the player something to respond to. Show, don\'t tell — ' +
+        'demonstrate the character\'s personality through their actions and words rather than stating traits.';
+
+    const context = getAccumulatedContext();
+
+    const prompt =
+        (context ? context + '\n\n' : '') +
+        (userInput ? 'The user wants the opening message to incorporate the following direction:\n' + userInput + '\n\n' : '') +
+        'Write the opening message for this roleplay. This is the very first message the character sends ' +
+        'to start the conversation.\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Write 2-4 paragraphs in third person, present tense. Include:\n' +
+        '- Scene setting (environment, time of day, atmosphere)\n' +
+        '- The character\'s appearance and current action\n' +
+        '- The character\'s inner thought or emotional state\n' +
+        '- A natural conversation hook or situation that invites the player to respond\n\n' +
+        'CONSTRAINTS:\n' +
+        '- Do not include any OOC text, markdown headers, or meta-commentary\n' +
+        '- Do not wrap output in code blocks\n' +
+        '- Show the character\'s personality through actions and words, not by stating traits';
+
+    const raw = await callGeneration(systemPrompt, prompt);
+    return raw?.trim() || null;
 }
 
 /**
@@ -918,10 +946,43 @@ export async function generateSpeechExample() {
 }
 
 /**
- * Regenerates first message. Stub — implemented in tsb-11.
- * @param {string} _previousOutput
- * @returns {Promise<string>}
+ * Regenerates the first message with a variation instruction.
+ * Provides the previous output so the AI produces something distinctly different.
+ * @param {string} previousOutput - The current first message to replace.
+ * @param {string} [userInput] - Optional user guidance for the first message direction.
+ * @returns {Promise<string|null>} A new first message, or null on failure.
  */
-export async function regenerateFirstMessage(_previousOutput) {
-    return '[Not yet implemented]';
+export async function regenerateFirstMessage(previousOutput, userInput) {
+    const systemPrompt =
+        'You are writing the opening message for a roleplay character. ' +
+        'This message sets the scene, establishes the character\'s voice, and invites the player to engage.\n\n' +
+        'Write in third person, present tense. Include environmental details, the character\'s actions ' +
+        'and thoughts, and a natural hook that gives the player something to respond to. Show, don\'t tell — ' +
+        'demonstrate the character\'s personality through their actions and words rather than stating traits.';
+
+    const context = getAccumulatedContext();
+
+    const prompt =
+        'IMPORTANT: Generate a COMPLETELY DIFFERENT version of this opening message. ' +
+        'Take a fresh creative direction — different scene, different time of day, different mood — ' +
+        'while maintaining consistency with established context.\n\n' +
+        (context ? context + '\n\n' : '') +
+        (userInput ? 'The user wants the opening message to incorporate the following direction:\n' + userInput + '\n\n' : '') +
+        'Previous first message to replace (DO NOT repeat this):\n' +
+        (previousOutput || '').substring(0, 500) + '\n\n' +
+        'Write a new opening message for this roleplay.\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Write 2-4 paragraphs in third person, present tense. Include:\n' +
+        '- Scene setting (environment, time of day, atmosphere)\n' +
+        '- The character\'s appearance and current action\n' +
+        '- The character\'s inner thought or emotional state\n' +
+        '- A natural conversation hook or situation that invites the player to respond\n\n' +
+        'CONSTRAINTS:\n' +
+        '- Do not include any OOC text, markdown headers, or meta-commentary\n' +
+        '- Do not wrap output in code blocks\n' +
+        '- Must be significantly different from the previous version\n' +
+        '- Show the character\'s personality through actions and words, not by stating traits';
+
+    const raw = await callGeneration(systemPrompt, prompt);
+    return raw?.trim() || null;
 }
