@@ -10,7 +10,7 @@ import {
     getStepData, updateStepData, acceptStep,
     getCompletedSteps, STEPS, getSetting, setSetting,
 } from './state.js';
-import { generateScenario, regenerateScenario } from './generation.js';
+import { generateScenario, regenerateScenario, generatePersona, regeneratePersona } from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
 import { converter } from '/script.js';
 
@@ -71,6 +71,9 @@ export function init($container) {
     $container.on('input.tsbWorkspace', '#tsb-max-response-tokens', function () {
         setSetting('scenarioMaxTokens', parseInt($(this).val()) || 0);
     });
+    $container.on('input.tsbWorkspace', '#tsb-persona-max-tokens', function () {
+        setSetting('personaMaxTokens', parseInt($(this).val()) || 0);
+    });
 
     // Section toggles — rebuild enabled list on change
     $container.on('change.tsbWorkspace', '.tsb-section-toggle input', function () {
@@ -79,6 +82,20 @@ export function init($container) {
             enabled.push($(this).data('section'));
         });
         setSetting('scenarioSections', enabled);
+    });
+
+    // Tooltip positioning — use fixed position so it escapes overflow containers
+    $container.on('mouseenter.tsbWorkspace', '.tsb-tooltip', function () {
+        const $tip = $(this).find('.tsb-tooltip-text');
+        const rect = this.getBoundingClientRect();
+        $tip.css({
+            display: 'block',
+            top: (rect.bottom + 8) + 'px',
+            left: Math.max(8, rect.left - 120) + 'px',
+        });
+    });
+    $container.on('mouseleave.tsbWorkspace', '.tsb-tooltip', function () {
+        $(this).find('.tsb-tooltip-text').css('display', 'none');
     });
 }
 
@@ -142,6 +159,9 @@ function renderStepContent(stepName) {
         case 'scenario':
             renderScenarioStep();
             break;
+        case 'persona':
+            renderPersonaStep();
+            break;
         default: {
             // Placeholder for unimplemented steps
             const label = TABS.find(t => t.step === stepName)?.label ?? stepName;
@@ -171,6 +191,16 @@ function getScenarioConstraints() {
         hooks: getSetting('scenarioHooks'),
         maxTokens: getSetting('scenarioMaxTokens'),
         sections: getSetting('scenarioSections') || [],
+    };
+}
+
+/**
+ * Reads current persona constraint settings.
+ * @returns {{ maxTokens: number }}
+ */
+function getPersonaConstraints() {
+    return {
+        maxTokens: getSetting('personaMaxTokens'),
     };
 }
 
@@ -210,7 +240,12 @@ function renderScenarioStep() {
     const html =
         '<div class="tsb-step" data-step="scenario">' +
             '<div class="tsb-step-input">' +
-                '<label class="tsb-step-label">Briefly describe the story/scenario for your chat</label>' +
+                '<label class="tsb-step-label">Briefly describe the story/scenario for your chat' +
+                    '<span class="tsb-tooltip">' +
+                        '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                        '<span class="tsb-tooltip-text">This scenario will be included as context for every subsequent generation (persona, character, location, first message). Be as detailed as you can, but keep in mind that longer scenarios consume more of your AI context window, leaving less room for other content.</span>' +
+                    '</span>' +
+                '</label>' +
                 '<textarea class="tsb-input-area" placeholder="e.g. A dark fantasy world where an exiled knight seeks redemption...">' +
                     escapeHTML(stepData.userInput) +
                 '</textarea>' +
@@ -243,7 +278,77 @@ function renderScenarioStep() {
             '</div>' +
             '<div class="tsb-step-output" ' + (hasOutput ? '' : 'style="display:none"') + '>' +
                 '<div class="tsb-output-header">' +
-                    '<label class="tsb-step-label">Generated Scenario</label>' +
+                    '<label class="tsb-step-label">Generated Scenario' +
+                        '<span class="tsb-tooltip">' +
+                            '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                            '<span class="tsb-tooltip-text">Review and edit the generated scenario to ensure your story stays consistent. Any changes you make here will carry through to all subsequent generations.</span>' +
+                        '</span>' +
+                    '</label>' +
+                    '<button class="tsb-btn tsb-btn-edit menu_button" title="Edit">' +
+                        '<i class="fa-solid fa-pen"></i> Edit' +
+                    '</button>' +
+                '</div>' +
+                '<div class="tsb-markdown-preview">' +
+                    (hasOutput ? renderMarkdown(outputContent) : '') +
+                '</div>' +
+                '<textarea class="tsb-output-area" style="display:none">' +
+                    escapeHTML(outputContent) +
+                '</textarea>' +
+                '<div class="tsb-step-actions">' +
+                    '<button class="tsb-btn tsb-btn-accept menu_button">' +
+                        '<i class="fa-solid fa-check"></i> Accept' +
+                    '</button>' +
+                    '<button class="tsb-btn tsb-btn-regenerate menu_button">' +
+                        '<i class="fa-solid fa-rotate"></i> Regenerate' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+        '</div>';
+
+    state.$container.find('.tsb-tab-content').html(html);
+}
+
+/**
+ * Renders the Persona step UI: prompt, textarea, Generate/Accept/Regenerate buttons.
+ * Same structure as scenario but without constraint controls or section toggles.
+ * Persona output is prose, not markdown with headers.
+ */
+function renderPersonaStep() {
+    const stepData = getStepData('persona');
+    const outputContent = stepData.accepted || stepData.generated || '';
+    const hasOutput = !!outputContent;
+    const maxTokens = getSetting('personaMaxTokens');
+
+    const html =
+        '<div class="tsb-step" data-step="persona">' +
+            '<div class="tsb-step-input">' +
+                '<label class="tsb-step-label">Describe your player persona for this scenario' +
+                    '<span class="tsb-tooltip">' +
+                        '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
+                        '<span class="tsb-tooltip-text">This is for your player character. Consider keeping the output under 300 tokens to save on context window space — the persona is included in every subsequent generation.</span>' +
+                    '</span>' +
+                '</label>' +
+                '<textarea class="tsb-input-area" placeholder="e.g. A disgraced noble seeking to reclaim their family honor...">' +
+                    escapeHTML(stepData.userInput) +
+                '</textarea>' +
+                '<div class="tsb-constraints">' +
+                    '<div class="tsb-constraint">' +
+                        '<label for="tsb-persona-max-tokens">Max Tokens</label>' +
+                        '<input type="number" id="tsb-persona-max-tokens" class="tsb-constraint-input text_pole" ' +
+                            'min="0" max="100000" step="50" value="' + maxTokens + '" ' +
+                            'title="Maximum response tokens (0 = no limit)" />' +
+                    '</div>' +
+                '</div>' +
+                '<div class="tsb-step-actions">' +
+                    '<button class="tsb-btn tsb-btn-generate menu_button" ' +
+                        (hasOutput ? 'style="display:none"' : '') + '>' +
+                        '<i class="fa-solid fa-wand-magic-sparkles"></i> Generate' +
+                    '</button>' +
+                '</div>' +
+            '</div>' +
+            '<div class="tsb-step-output" ' + (hasOutput ? '' : 'style="display:none"') + '>' +
+                '<div class="tsb-output-header">' +
+                    '<label class="tsb-step-label">Generated Persona</label>' +
                     '<button class="tsb-btn tsb-btn-edit menu_button" title="Edit">' +
                         '<i class="fa-solid fa-pen"></i> Edit' +
                     '</button>' +
@@ -307,6 +412,8 @@ async function handleGenerateClick(event) {
         let result = '';
         if (stepName === 'scenario') {
             result = await generateScenario(userInput, getScenarioConstraints());
+        } else if (stepName === 'persona') {
+            result = await generatePersona(userInput, getPersonaConstraints());
         }
 
         // Guard against stale result
@@ -409,12 +516,20 @@ async function handleRegenerateClick(event) {
     const $step = $(event.currentTarget).closest('.tsb-step');
     const stepName = $step.data('step');
     const stepData = getStepData(stepName);
-    const userInput = stepData.userInput;
+
+    // Read current prompt from textarea — user may have edited it since last generate
+    const currentInput = $step.find('.tsb-input-area').val()?.trim();
+    const userInput = currentInput || stepData.userInput;
     const previousOutput = stepData.generated || stepData.accepted || '';
 
     if (!userInput) {
         toastr.warning('No input to regenerate from.');
         return;
+    }
+
+    // Persist the (possibly updated) prompt
+    if (currentInput) {
+        updateStepData(stepName, { userInput });
     }
 
     const currentGenId = ++state.generationId;
@@ -426,6 +541,8 @@ async function handleRegenerateClick(event) {
         let result = '';
         if (stepName === 'scenario') {
             result = await regenerateScenario(userInput, previousOutput, getScenarioConstraints());
+        } else if (stepName === 'persona') {
+            result = await regeneratePersona(userInput, previousOutput, getPersonaConstraints());
         }
 
         if (currentGenId !== state.generationId) return;

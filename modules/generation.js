@@ -176,26 +176,103 @@ export async function regenerateScenario(userInput, previousOutput, constraints)
     return callGeneration(systemPrompt, prompt);
 }
 
+// === Persona generation ===
+
+/**
+ * Builds the constraints block for persona prompts.
+ * @param {object} constraints - User-specified constraints.
+ * @param {number} constraints.maxTokens - Token budget (0 = no limit).
+ * @returns {string} Formatted constraints text.
+ */
+function buildPersonaConstraints(constraints) {
+    const lines = [
+        '- Be specific and concrete — never use vague descriptions like "attractive" or "nice"',
+        '- Maintain consistency with the established scenario',
+        '- Do not include meta-commentary, disclaimers, or OOC notes',
+        '- Do not wrap output in markdown code blocks',
+        '- Write in second person or third person (not first person)',
+        '- Write at a professional creative writing quality level',
+    ];
+
+    if (constraints.maxTokens > 0) {
+        lines.push(
+            `- Your ENTIRE response must be under ${constraints.maxTokens} tokens. ` +
+            'Plan your output length carefully before writing. The response must be ' +
+            'fully formed and complete — do not cut off mid-thought or leave paragraphs ' +
+            'unfinished. Prioritize conciseness while maintaining quality and detail.',
+        );
+    }
+
+    return lines.join('\n');
+}
+
+/**
+ * Generates a persona description using the accepted scenario as context.
+ * @param {string} userInput - The user's persona description/concept.
+ * @param {object} constraints - User-specified constraints.
+ * @param {number} constraints.maxTokens - Token budget (0 = no limit).
+ * @returns {Promise<string>} Prose persona description.
+ */
+export async function generatePersona(userInput, constraints) {
+    const systemPrompt =
+        'You are a character creation assistant specializing in crafting player personas for ' +
+        'roleplay scenarios. Your output will be used as a SillyTavern persona description.\n\n' +
+        'Write a detailed persona that establishes the player character\'s identity, background, ' +
+        'personality, and role in the scenario. The persona should feel grounded and distinct.';
+
+    const context = getAccumulatedContext();
+
+    const prompt =
+        (context ? context + '\n\n' : '') +
+        'The user wants to create their player persona for this scenario. Here is their description:\n\n' +
+        userInput + '\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Write a persona description as continuous prose (no markdown headers). Write 2-4 paragraphs ' +
+        'covering: identity, background, personality traits, motivations, and role in the scenario.\n\n' +
+        'CONSTRAINTS:\n' +
+        buildPersonaConstraints(constraints);
+
+    return callGeneration(systemPrompt, prompt);
+}
+
+/**
+ * Regenerates persona with a variation instruction to produce a different result.
+ * @param {string} userInput - The user's original persona description.
+ * @param {string} previousOutput - The previous generation to avoid repeating.
+ * @param {object} constraints - User-specified constraints.
+ * @param {number} constraints.maxTokens - Token budget (0 = no limit).
+ * @returns {Promise<string>} New prose persona description.
+ */
+export async function regeneratePersona(userInput, previousOutput, constraints) {
+    const systemPrompt =
+        'You are a character creation assistant specializing in crafting player personas for ' +
+        'roleplay scenarios. Your output will be used as a SillyTavern persona description.\n\n' +
+        'Write a detailed persona that establishes the player character\'s identity, background, ' +
+        'personality, and role in the scenario. The persona should feel grounded and distinct.';
+
+    const context = getAccumulatedContext();
+    const prevSummary = (previousOutput || '').split('\n').slice(0, 3).join(' ').substring(0, 200);
+
+    const prompt =
+        'IMPORTANT: Generate a COMPLETELY DIFFERENT version. Do not repeat themes, descriptions, ' +
+        'or phrasings from the previous generation. Take a fresh creative direction while ' +
+        'maintaining consistency with established context.\n\n' +
+        'Key elements from the previous version to AVOID repeating:\n' +
+        prevSummary + '\n\n' +
+        (context ? context + '\n\n' : '') +
+        'The user wants to create their player persona for this scenario. Here is their description:\n\n' +
+        userInput + '\n\n' +
+        'OUTPUT FORMAT:\n' +
+        'Write a persona description as continuous prose (no markdown headers). Write 2-4 paragraphs ' +
+        'covering: identity, background, personality traits, motivations, and role in the scenario.\n\n' +
+        'CONSTRAINTS:\n' +
+        buildPersonaConstraints(constraints) + '\n' +
+        '- Must be significantly different from the previous version';
+
+    return callGeneration(systemPrompt, prompt);
+}
+
 // === Stub functions for future tickets ===
-
-/**
- * Generates persona description. Stub — implemented in tsb-6.
- * @param {string} _userInput - The user's persona description.
- * @returns {Promise<string>}
- */
-export async function generatePersona(_userInput) {
-    return '[Not yet implemented]';
-}
-
-/**
- * Regenerates persona. Stub — implemented in tsb-6.
- * @param {string} _userInput
- * @param {string} _previousOutput
- * @returns {Promise<string>}
- */
-export async function regeneratePersona(_userInput, _previousOutput) {
-    return '[Not yet implemented]';
-}
 
 /**
  * Generates character fields as JSON. Stub — implemented in tsb-8.
