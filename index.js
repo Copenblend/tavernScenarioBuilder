@@ -6,8 +6,8 @@
  */
 
 import { renderExtensionTemplateAsync } from '/scripts/extensions.js';
-import { loadSettings, getSetting, setSetting } from './modules/state.js';
-import { init as initWorkspace, destroy as destroyWorkspace } from './modules/workspace.js';
+import { loadSettings, getSetting, setSetting, hasExistingSession, loadSession, resetSession } from './modules/state.js';
+import { init as initWorkspace, destroy as destroyWorkspace, restoreSession } from './modules/workspace.js';
 import { init as initEntries, destroy as destroyEntries } from './modules/entries.js';
 
 const extensionFolderPath = 'third-party/SillyTavern-TavernScenarioBuilder';
@@ -85,6 +85,11 @@ async function openTsb() {
     // Initialize workspace tabs and entries panel
     initWorkspace($overlay);
     initEntries($overlay);
+
+    // Check for an existing saved session and prompt Resume / Start New
+    if (hasExistingSession()) {
+        showResumeDialog($overlay);
+    }
 
     console.log('[TavernScenarioBuilder] Overlay opened');
 }
@@ -192,6 +197,48 @@ function cleanupResize() {
     document.body.style.cursor = '';
     const body = document.querySelector('#tsb-overlay .tsb-body');
     if (body) body.classList.remove('tsb-resizing');
+}
+
+/**
+ * Shows a resume/start-new dialog when a saved session exists.
+ * @param {jQuery} $overlay - The overlay root element.
+ */
+function showResumeDialog($overlay) {
+    const $backdrop = $('<div>', { class: 'tsb-resume-backdrop' });
+    const $dialog = $(
+        '<div class="tsb-resume-dialog">' +
+            '<div class="tsb-resume-dialog-title">' +
+                '<i class="fa-solid fa-clock-rotate-left"></i> Resume Session?' +
+            '</div>' +
+            '<p class="tsb-resume-dialog-text">' +
+                'A previous session was found. Would you like to continue where you left off?' +
+            '</p>' +
+            '<div class="tsb-resume-dialog-actions">' +
+                '<button class="tsb-btn tsb-btn-resume menu_button">' +
+                    '<i class="fa-solid fa-play"></i> Resume' +
+                '</button>' +
+                '<button class="tsb-btn tsb-btn-start-new menu_button">' +
+                    '<i class="fa-solid fa-plus"></i> Start New' +
+                '</button>' +
+            '</div>' +
+        '</div>',
+    );
+
+    $backdrop.append($dialog);
+    $overlay.append($backdrop);
+
+    $backdrop.on('click', '.tsb-btn-resume', function () {
+        loadSession();
+        restoreSession();
+        $backdrop.remove();
+        console.log('[TavernScenarioBuilder] Session resumed');
+    });
+
+    $backdrop.on('click', '.tsb-btn-start-new', function () {
+        resetSession();
+        $backdrop.remove();
+        console.log('[TavernScenarioBuilder] Started new session');
+    });
 }
 
 // Extension initialization
