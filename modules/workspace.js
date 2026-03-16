@@ -21,6 +21,7 @@ import {
     generateFirstMessage, regenerateFirstMessage,
 } from './generation.js';
 import { renderAllEntries, addEntry } from './entries.js';
+import { createAll } from './creation.js';
 import { converter } from '/script.js';
 
 /** Tab definitions: step name → display label + icon */
@@ -106,6 +107,9 @@ export function init($container) {
     // First message handlers
     $container.on('click.tsbWorkspace', '.tsb-btn-generate-first-message', handleGenerateFirstMessageClick);
     $container.on('click.tsbWorkspace', '.tsb-btn-create-all', handleCreateAllClick);
+
+    // Avatar upload handler
+    $container.on('change.tsbWorkspace', '.tsb-avatar-file-input', handleAvatarUpload);
 
     // Constraint inputs — persist on change
     $container.on('input.tsbWorkspace', '#tsb-hooks', function () {
@@ -397,6 +401,17 @@ function renderPersonaStep() {
     const html =
         '<div class="tsb-step" data-step="persona">' +
             '<div class="tsb-step-input">' +
+                '<div class="tsb-avatar-upload" data-target="persona">' +
+                    '<div class="tsb-avatar-preview">' +
+                        (stepData.avatarDataUrl
+                            ? '<img src="' + escapeHTML(stepData.avatarDataUrl) + '" alt="Persona avatar" />'
+                            : '<i class="fa-solid fa-user tsb-avatar-placeholder-icon"></i>') +
+                    '</div>' +
+                    '<label class="tsb-btn tsb-btn-upload-avatar menu_button">' +
+                        '<i class="fa-solid fa-upload"></i> Upload Avatar' +
+                        '<input type="file" class="tsb-avatar-file-input" data-target="persona" accept="image/*" style="display:none" />' +
+                    '</label>' +
+                '</div>' +
                 '<div class="tsb-field-group tsb-persona-name-group">' +
                     '<label class="tsb-field-label">Name' +
                         '<span class="tsb-tooltip">' +
@@ -534,6 +549,17 @@ function renderCharacterStep() {
     let html =
         '<div class="tsb-step" data-step="character">' +
             '<div class="tsb-step-input">' +
+                '<div class="tsb-avatar-upload" data-target="character">' +
+                    '<div class="tsb-avatar-preview">' +
+                        (stepData.avatarDataUrl
+                            ? '<img src="' + escapeHTML(stepData.avatarDataUrl) + '" alt="Character avatar" />'
+                            : '<i class="fa-solid fa-id-card tsb-avatar-placeholder-icon"></i>') +
+                    '</div>' +
+                    '<label class="tsb-btn tsb-btn-upload-avatar menu_button">' +
+                        '<i class="fa-solid fa-upload"></i> Upload Avatar' +
+                        '<input type="file" class="tsb-avatar-file-input" data-target="character" accept="image/*" style="display:none" />' +
+                    '</label>' +
+                '</div>' +
                 '<label class="tsb-step-label">Describe the chat character' +
                     '<span class="tsb-tooltip">' +
                         '<i class="fa-solid fa-circle-question tsb-tooltip-icon"></i>' +
@@ -745,7 +771,7 @@ function renderLocationStep() {
                         '<span class="tsb-tooltip-text">Describe where the story takes place. This will generate world info lorebook entries that activate when matching keywords appear in conversation.</span>' +
                     '</span>' +
                 '</label>' +
-                '<span class="tsb-input-helper">(e.g., "Earth 2047, Brighton Michigan, My House" or just "My house")</span>' +
+                '<span class="tsb-input-helper">(e.g., "Earth 2047, Old Ohio, My House" or just "My house")</span>' +
                 '<textarea class="tsb-input-area text_pole" placeholder="Describe the location...">' +
                     escapeHTML(stepData.userInput || '') +
                 '</textarea>' +
@@ -835,11 +861,6 @@ function renderFirstMessageStep() {
                         '<i class="fa-solid fa-rotate"></i> Regenerate' +
                     '</button>' +
                 '</div>' +
-            '</div>' +
-            '<div class="tsb-create-all-container" ' + (isAccepted ? '' : 'style="display:none"') + '>' +
-                '<button class="tsb-btn tsb-btn-create-all menu_button">' +
-                    '<i class="fa-solid fa-hammer"></i> Create in SillyTavern' +
-                '</button>' +
             '</div>' +
         '</div>';
 
@@ -1056,9 +1077,8 @@ function handleAcceptClick(event) {
         switchTab(nextStep);
     }
 
-    // First message is the last step — show the Create All button
+    // First message is the last step — mark tab as completed
     if (stepName === 'firstMessage') {
-        $step.find('.tsb-create-all-container').show();
         const $tab = state.$container.find('.tsb-tab[data-step="firstMessage"]');
         if (!$tab.hasClass('tsb-tab-completed')) {
             $tab.addClass('tsb-tab-completed')
@@ -1919,11 +1939,71 @@ async function handleGenerateFirstMessageClick() {
 }
 
 /**
- * Handles clicking "Create in SillyTavern".
- * Placeholder until tsb-11 implements the creation module.
+ * Handles avatar file input change.
+ * Reads the selected image file and stores it as a data URL in session state.
+ * @param {Event} event - The delegated change event.
  */
-function handleCreateAllClick() {
-    toastr.info('Create in SillyTavern is not yet implemented. Coming soon!');
+function handleAvatarUpload(event) {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const target = $(input).data('target'); // 'persona' or 'character'
+    const reader = new FileReader();
+
+    reader.onload = function (e) {
+        const dataUrl = e.target.result;
+        updateStepData(target, { avatarDataUrl: dataUrl });
+
+        // Update the preview image
+        const $upload = $(input).closest('.tsb-avatar-upload');
+        $upload.find('.tsb-avatar-preview').html(
+            '<img src="' + escapeHTML(dataUrl) + '" alt="Avatar" />',
+        );
+    };
+
+    reader.readAsDataURL(file);
+    // Reset so the same file can be re-selected
+    input.value = '';
+}
+
+/**
+ * Handles clicking "Create in SillyTavern".
+ * Creates character card, world info, and persona in SillyTavern.
+ */
+async function handleCreateAllClick() {
+    const $btn = state.$container.find('.tsb-btn-create-all');
+    const originalHtml = $btn.html();
+    $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i> Creating...');
+
+    try {
+        const result = await createAll();
+
+        if (result.errors.length === 0) {
+            toastr.success(
+                `Character: ${result.character}<br>` +
+                `World Info: ${result.worldInfo}<br>` +
+                `Persona: ${result.persona}`,
+                'All artifacts created in SillyTavern!',
+            );
+        } else if (result.errors.length < 3) {
+            const created = [];
+            if (result.character) created.push(`Character: ${result.character}`);
+            if (result.worldInfo) created.push(`World Info: ${result.worldInfo}`);
+            if (result.persona) created.push(`Persona: ${result.persona}`);
+            toastr.warning(
+                `Created: ${created.join(', ')}<br>Failed: ${result.errors.join(', ')}`,
+                'Partial creation — some artifacts failed',
+            );
+        } else {
+            toastr.error('All artifact creation failed. Please check your connection and try again.');
+        }
+    } catch (err) {
+        console.error('[TavernScenarioBuilder] Create all failed:', err);
+        toastr.error('Failed to create artifacts. Please check your connection and try again.');
+    } finally {
+        $btn.prop('disabled', false).html(originalHtml);
+    }
 }
 
 /**

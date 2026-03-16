@@ -875,7 +875,13 @@ export async function generateFirstMessage(userInput) {
         'This message sets the scene, establishes the character\'s voice, and invites the player to engage.\n\n' +
         'Write in third person, present tense. Include environmental details, the character\'s actions ' +
         'and thoughts, and a natural hook that gives the player something to respond to. Show, don\'t tell — ' +
-        'demonstrate the character\'s personality through their actions and words rather than stating traits.';
+        'demonstrate the character\'s personality through their actions and words rather than stating traits.\n\n' +
+        'CRITICAL: The first message strongly influences the response format for the entire roleplay. ' +
+        'You MUST use the following formatting conventions:\n' +
+        '- *asterisks* for actions and internal thoughts\n' +
+        '- "quotes" for spoken dialogue\n' +
+        '- The opening message MUST include a combination of actions, internal thoughts, AND spoken dialogue ' +
+        'to establish the expected response pattern.';
 
     const context = getAccumulatedContext();
 
@@ -888,11 +894,14 @@ export async function generateFirstMessage(userInput) {
         'Write 2-4 paragraphs in third person, present tense. Include:\n' +
         '- Scene setting (environment, time of day, atmosphere)\n' +
         '- The character\'s appearance and current action\n' +
-        '- The character\'s inner thought or emotional state\n' +
-        '- A natural conversation hook or situation that invites the player to respond\n\n' +
+        '- The character\'s inner thought or emotional state (in *asterisks*)\n' +
+        '- Spoken dialogue (in "quotes")\n' +
+        '- A natural conversation hook or situation that invites the player to respond\n' +
+        '- A mix of *actions*, *thoughts*, and "dialogue" throughout — all three must be present\n\n' +
         'CONSTRAINTS:\n' +
         '- Do not include any OOC text, markdown headers, or meta-commentary\n' +
         '- Do not wrap output in code blocks\n' +
+        '- Use *asterisks* for actions and internal thoughts, "quotes" for spoken dialogue\n' +
         '- Show the character\'s personality through actions and words, not by stating traits';
 
     const raw = await callGeneration(systemPrompt, prompt);
@@ -958,7 +967,13 @@ export async function regenerateFirstMessage(previousOutput, userInput) {
         'This message sets the scene, establishes the character\'s voice, and invites the player to engage.\n\n' +
         'Write in third person, present tense. Include environmental details, the character\'s actions ' +
         'and thoughts, and a natural hook that gives the player something to respond to. Show, don\'t tell — ' +
-        'demonstrate the character\'s personality through their actions and words rather than stating traits.';
+        'demonstrate the character\'s personality through their actions and words rather than stating traits.\n\n' +
+        'CRITICAL: The first message strongly influences the response format for the entire roleplay. ' +
+        'You MUST use the following formatting conventions:\n' +
+        '- *asterisks* for actions and internal thoughts\n' +
+        '- "quotes" for spoken dialogue\n' +
+        '- The opening message MUST include a combination of actions, internal thoughts, AND spoken dialogue ' +
+        'to establish the expected response pattern.';
 
     const context = getAccumulatedContext();
 
@@ -975,11 +990,14 @@ export async function regenerateFirstMessage(previousOutput, userInput) {
         'Write 2-4 paragraphs in third person, present tense. Include:\n' +
         '- Scene setting (environment, time of day, atmosphere)\n' +
         '- The character\'s appearance and current action\n' +
-        '- The character\'s inner thought or emotional state\n' +
-        '- A natural conversation hook or situation that invites the player to respond\n\n' +
+        '- The character\'s inner thought or emotional state (in *asterisks*)\n' +
+        '- Spoken dialogue (in "quotes")\n' +
+        '- A natural conversation hook or situation that invites the player to respond\n' +
+        '- A mix of *actions*, *thoughts*, and "dialogue" throughout — all three must be present\n\n' +
         'CONSTRAINTS:\n' +
         '- Do not include any OOC text, markdown headers, or meta-commentary\n' +
         '- Do not wrap output in code blocks\n' +
+        '- Use *asterisks* for actions and internal thoughts, "quotes" for spoken dialogue\n' +
         '- Must be significantly different from the previous version\n' +
         '- Show the character\'s personality through actions and words, not by stating traits';
 
