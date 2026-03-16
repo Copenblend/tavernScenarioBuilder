@@ -40,9 +40,11 @@ function createBlankSession() {
             userInput: '',
             generated: '',
             accepted: '',
+            avatarDataUrl: '',
         },
         character: {
             userInput: '',
+            avatarDataUrl: '',
             fields: {
                 name: '',
                 age: '',

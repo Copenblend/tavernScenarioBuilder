@@ -6,7 +6,7 @@
  */
 
 import { escapeHTML } from './utils.js';
-import { getStepData, isStepCompleted } from './state.js';
+import { getStepData, isStepCompleted, STEPS } from './state.js';
 
 /** Step display labels and icons */
 const STEP_META = {
@@ -61,6 +61,9 @@ export function renderAllEntries() {
 
     const html = completedEntries.map(step => buildAccordionHtml(step)).join('');
     state.$container.html(html);
+
+    // Show Create button when all steps are complete
+    appendCreateButtonIfReady();
 }
 
 /**
@@ -80,6 +83,9 @@ export function addEntry(stepName) {
     // Append the new accordion
     const html = buildAccordionHtml(stepName);
     state.$container.append(html);
+
+    // Show Create button when all steps are complete
+    appendCreateButtonIfReady();
 }
 
 /**
@@ -88,6 +94,26 @@ export function addEntry(stepName) {
  */
 export function updateEntry(stepName) {
     addEntry(stepName);
+}
+
+/**
+ * Appends the "Create in SillyTavern" button if all steps are completed.
+ * Removes any existing button first to prevent duplicates.
+ */
+function appendCreateButtonIfReady() {
+    if (!state.$container) return;
+    state.$container.find('.tsb-create-all-container').remove();
+
+    const allDone = STEPS.every(s => isStepCompleted(s));
+    if (!allDone) return;
+
+    const html =
+        '<div class="tsb-create-all-container">' +
+            '<button class="tsb-btn tsb-btn-create-all menu_button">' +
+                '<i class="fa-solid fa-hammer"></i> Create in SillyTavern' +
+            '</button>' +
+        '</div>';
+    state.$container.append(html);
 }
 
 /**
