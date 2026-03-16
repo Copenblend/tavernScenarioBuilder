@@ -10,7 +10,7 @@ import { loadSettings, getSetting, setSetting, hasExistingSession, loadSession, 
 import { init as initWorkspace, destroy as destroyWorkspace, restoreSession } from './modules/workspace.js';
 import { init as initEntries, destroy as destroyEntries } from './modules/entries.js';
 
-const extensionFolderPath = 'third-party/SillyTavern-TavernScenarioBuilder';
+const extensionFolderPath = 'third-party/tavernScenarioBuilder';
 
 /** Resize tracking state — active only while dragging the split handle */
 let resizeState = null;
