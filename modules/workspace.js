@@ -2007,6 +2007,40 @@ async function handleCreateAllClick() {
 }
 
 /**
+ * Restores the workspace UI from a loaded session.
+ * Unlocks completed tabs, marks them complete, re-renders entries, and navigates to current step.
+ */
+export function restoreSession() {
+    if (!state.$container) return;
+
+    const completed = getCompletedSteps();
+
+    // Re-render the tab bar to pick up completed state
+    renderTabBar();
+
+    // Unlock tabs for completed steps + the next step after each
+    for (const step of completed) {
+        unlockTab(step);
+        const $tab = state.$container.find(`.tsb-tab[data-step="${step}"]`);
+        if (!$tab.hasClass('tsb-tab-completed')) {
+            $tab.addClass('tsb-tab-completed')
+                .append(' <i class="fa-solid fa-check"></i>');
+        }
+        const idx = STEPS.indexOf(step);
+        if (idx >= 0 && idx < STEPS.length - 1) {
+            unlockTab(STEPS[idx + 1]);
+        }
+    }
+
+    // Re-render entries panel with all restored data
+    renderAllEntries();
+
+    // Navigate to the first incomplete step (or last step if all done)
+    const currentStep = STEPS.find(s => !completed.includes(s)) || STEPS[STEPS.length - 1];
+    switchTab(currentStep);
+}
+
+/**
  * Cleans up event handlers and nulls references.
  */
 export function destroy() {

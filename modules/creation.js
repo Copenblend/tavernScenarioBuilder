@@ -11,6 +11,29 @@ import { updateWorldInfoList } from '/scripts/world-info.js';
 import { getSession } from './state.js';
 
 /**
+ * Replaces all occurrences of the persona name with {{user}} and
+ * the character name with {{char}} in a text string.
+ * Uses case-insensitive whole-word matching to catch all variations.
+ * @param {string} text - The input text.
+ * @param {string} charName - The character name to replace.
+ * @param {string} personaName - The persona name to replace.
+ * @returns {string} Text with names replaced by macros.
+ */
+function replaceNamesWithMacros(text, charName, personaName) {
+    if (!text) return text;
+    // Replace persona name first (longer match priority), then character name
+    if (personaName) {
+        const personaRegex = new RegExp(personaName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        text = text.replace(personaRegex, '{{user}}');
+    }
+    if (charName) {
+        const charRegex = new RegExp(charName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        text = text.replace(charRegex, '{{char}}');
+    }
+    return text;
+}
+
+/**
  * Composes a formatted character description from individual fields.
  * Sections with all empty fields are omitted.
  * @param {object} fields - The character fields object from session state.
@@ -94,7 +117,8 @@ function composeSpeechExamples(examples) {
  * @param {Array} entryList - Array of { title, keywords, content } objects.
  * @returns {object} Entries object keyed by string index.
  */
-function buildWorldInfoEntries(entryList) {
+function buildWorldInfoEntries(entryList, replaceFn) {
+    const r = replaceFn || ((t) => t);
     const entries = {};
     entryList.forEach((entry, i) => {
         entries[String(i)] = {
@@ -102,7 +126,7 @@ function buildWorldInfoEntries(entryList) {
             key: Array.isArray(entry.keywords) ? entry.keywords : [],
             keysecondary: [],
             comment: entry.title || '',
-            content: entry.content || '',
+            content: r(entry.content || ''),
             constant: false,
             selective: false,
             order: 100,
@@ -128,8 +152,8 @@ function buildWorldInfoEntries(entryList) {
  * @param {Array} entryList - Array of { title, keywords, content } objects.
  * @returns {Promise<string>} The world info name.
  */
-async function createWorldInfoFile(name, entryList) {
-    const entries = buildWorldInfoEntries(entryList);
+async function createWorldInfoFile(name, entryList, replaceFn) {
+    const entries = buildWorldInfoEntries(entryList, replaceFn);
 
     const response = await fetch('/api/worldinfo/edit', {
         method: 'POST',
@@ -157,15 +181,21 @@ async function createCharacterCard(session, charLorebookName) {
     const fields = session.character.fields;
     const charName = fields.name || 'Unknown';
 
+    // Resolve persona name for {{user}} replacement
+    const personaName = session.persona.personaName
+        || (session.persona.accepted || '').split('\n')[0]?.split(/\s+/).slice(0, 3).join(' ')
+        || '';
+    const r = (text) => replaceNamesWithMacros(text, charName, personaName);
+
     const formData = new FormData();
     formData.append('ch_name', charName);
-    formData.append('description', composeDescription(fields));
-    formData.append('personality', fields.personality_summary || '');
-    formData.append('scenario', fields.scenario || '');
-    formData.append('first_mes', session.firstMessage.accepted || '');
-    formData.append('mes_example', composeSpeechExamples(fields.speech_examples));
+    formData.append('description', r(composeDescription(fields)));
+    formData.append('personality', r(fields.personality_summary || ''));
+    formData.append('scenario', r(fields.scenario || ''));
+    formData.append('first_mes', r(session.firstMessage.accepted || ''));
+    formData.append('mes_example', r(composeSpeechExamples(fields.speech_examples)));
     formData.append('system_prompt', '');
-    formData.append('depth_prompt_prompt', fields.character_note || '');
+    formData.append('depth_prompt_prompt', r(fields.character_note || ''));
     formData.append('depth_prompt_depth', '4');
     formData.append('depth_prompt_role', 'system');
     formData.append('world', charLorebookName || '');
@@ -259,15 +289,23 @@ export async function createAll() {
     const errors = [];
     let worldInfoName = '';
     let characterName = '';
-    let personaName = '';
+    let createdPersonaName = '';
 
     let charLorebookName = '';
+
+    // Resolve names for {{user}}/{{char}} macro replacement
+    const charName = session.character.fields.name || 'Unknown';
+    const personaName = session.persona.personaName
+        || (session.persona.accepted || '').split('\n')[0]?.split(/\s+/).slice(0, 3).join(' ')
+        || '';
+    const r = (text) => replaceNamesWithMacros(text, charName, personaName);
 
     // 1. Create location world info (standalone, not linked to character)
     try {
         worldInfoName = await createWorldInfoFile(
-            `${session.character.fields.name || 'Unknown'} Locations`,
+            `${charName} Locations`,
             session.location.entries,
+            r,
         );
     } catch (err) {
         console.error('[TavernScenarioBuilder] Location world info creation failed:', err);
@@ -278,8 +316,9 @@ export async function createAll() {
     if (session.character.lorebook && session.character.lorebook.length > 0) {
         try {
             charLorebookName = await createWorldInfoFile(
-                `${session.character.fields.name || 'Unknown'} Lorebook`,
+                `${charName} Lorebook`,
                 session.character.lorebook,
+                r,
             );
         } catch (err) {
             console.error('[TavernScenarioBuilder] Character lorebook creation failed:', err);
@@ -297,7 +336,7 @@ export async function createAll() {
 
     // 4. Create persona (with avatar upload)
     try {
-        personaName = await createPersonaST(session);
+        createdPersonaName = await createPersonaST(session);
     } catch (err) {
         console.error('[TavernScenarioBuilder] Persona creation failed:', err);
         errors.push('Persona');
@@ -314,5 +353,5 @@ export async function createAll() {
         console.warn('[TavernScenarioBuilder] UI refresh failed (artifacts were still created):', err);
     }
 
-    return { character: characterName, worldInfo: worldInfoName, persona: personaName, errors };
+    return { character: characterName, worldInfo: worldInfoName, persona: createdPersonaName, errors };
 }

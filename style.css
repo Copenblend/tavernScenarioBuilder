@@ -1057,4 +1057,55 @@ select.tsb-constraint-input {
     font-size: 0.85em;
 }
 
+/* Resume session dialog */
+.tsb-resume-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(4px);
+}
+
+.tsb-resume-dialog {
+    background: var(--SmartThemeBlurTintColor, #1e1e2e);
+    border: 1px solid var(--SmartThemeBorderColor, #444);
+    border-radius: 12px;
+    padding: 2em;
+    min-width: 320px;
+    max-width: 420px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tsb-resume-dialog-title {
+    font-size: 1.3em;
+    font-weight: 600;
+    margin-bottom: 0.6em;
+    color: var(--SmartThemeBodyColor, #ccc);
+}
+
+.tsb-resume-dialog-title i {
+    margin-right: 0.4em;
+    color: var(--SmartThemeQuoteColor, #999);
+}
+
+.tsb-resume-dialog-text {
+    color: var(--SmartThemeQuoteColor, #aaa);
+    margin-bottom: 1.5em;
+    line-height: 1.5;
+}
+
+.tsb-resume-dialog-actions {
+    display: flex;
+    gap: 1em;
+    justify-content: center;
+}
+
+.tsb-resume-dialog-actions .tsb-btn {
+    min-width: 120px;
+}
+
 
