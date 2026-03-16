@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "style.css",
     "author": "Copenblend",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "homePage": "https://github.com/Copenblend/tavernScenarioBuilder",
     "description": "AI-powered wizard for creating characters, personas, worlds, and lorebooks"
 }
