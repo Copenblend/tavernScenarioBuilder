@@ -64,6 +64,8 @@ Describe the story or scenario you want to roleplay.
 - Click **Regenerate** to get a completely different version.
 - Click **Accept** to lock it in and move to the next step.
 
+![Scenario Step](screenshots/scenario_screen.png)
+
 ---
 
 ### Step 2: Persona
@@ -83,6 +85,8 @@ Create your player character — the person *you* will be roleplaying as.
 
 **After generation:**
 - Same Edit / Regenerate / Accept flow as Scenario.
+
+![Persona Step](screenshots/persona_screen.png)
 
 ---
 
@@ -118,6 +122,8 @@ Build the AI character — the bot you'll be talking to.
 - **Per-field regeneration** — Each field has its own regenerate button. Regenerate just one field while keeping everything else intact.
 - **Regenerate All** — Re-generate every field at once.
 
+![Character Fields](screenshots/character_screen_main.png)
+
 #### Speech Examples
 
 Below the character fields, you can manage speech examples:
@@ -139,6 +145,8 @@ Below speech examples, you can build a lorebook for the character:
 
 Click **Accept Character** when you're satisfied with all fields, examples, and lorebook entries.
 
+![Character Lorebook](screenshots/character_screen_lore.png)
+
 ---
 
 ### Step 4: Location
@@ -158,6 +166,8 @@ Define the world and locations where the story takes place.
 
 Click **Accept Location** to lock in and move to the final step.
 
+![Location Step](screenshots/location_screen.png)
+
 ---
 
 ### Step 5: First Message
@@ -172,6 +182,8 @@ Generate the character's opening message that starts the roleplay.
 
 **After generation:**
 - Same Edit / Regenerate / Accept flow.
+
+![First Message Step](screenshots/first_message_screen.png)
 
 ---
 
@@ -196,6 +208,8 @@ During creation, the builder automatically replaces names with SillyTavern macro
 - All occurrences of the **persona's name** → `{{user}}`
 
 This applies to: character description, personality, scenario, first message, speech examples, character note, lorebook content, and location content.
+
+![Create in SillyTavern](screenshots/create_screen.png)
 
 ### After Creation
 
@@ -250,3 +264,13 @@ This extension has only been tested with **GLM-4** (specifically GLM-4.6). It sh
 - Try adjusting the **System Prompt Injection** in settings (e.g., adding `/nothink\n` for models that output chain-of-thought reasoning).
 - Try adjusting **Max Tokens** if outputs are being truncated or are too verbose.
 - Try **Regenerate** if the AI produces malformed output — some models need a second attempt for structured JSON responses (character fields, lorebook entries, location entries).
+
+```
+Tested Connection Profile Settings:
+  model: 'zai-org/GLM-4.6',
+  temperature: 1,
+  max_tokens: 10000,
+  presence_penalty: 0,
+  frequency_penalty: 0,
+  top_p: 0.92,
+```
